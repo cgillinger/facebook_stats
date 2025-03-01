@@ -2,9 +2,6 @@
 
 A web-based application for analyzing and visualizing Facebook post statistics. This tool allows users to upload CSV export files from Facebook Insights, process the data, and view comprehensive analytics in both account-level and post-level views.
 
-<p align="center">
-  <img src="public/Icon.png" alt="Facebook Statistics App Logo" width="120">
-</p>
 
 ## 📊 Features
 
