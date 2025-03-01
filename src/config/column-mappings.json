@@ -1,0 +1,85 @@
+{
+  "version": "1.0",
+  "categories": {
+    "metadata": {
+      "title": "Metadata",
+      "description": "Grundläggande information om inlägget",
+      "fields": {
+        "postId": {
+          "required": true,
+          "aliases": ["Post ID", "Inläggs-ID", "PostID"],
+          "type": "string",
+          "description": "Unikt ID för inlägget"
+        },
+        "pageId": {
+          "required": true,
+          "aliases": ["Page ID", "Sidans ID", "SidID"],
+          "type": "string",
+          "description": "ID för Facebook-sidan"
+        },
+        "pageName": {
+          "required": true,
+          "aliases": ["Page name", "Sidans namn", "Sidnamn"],
+          "type": "string",
+          "description": "Namnet på Facebook-sidan"
+        }
+      }
+    },
+    "metrics": {
+      "title": "Mätvärden",
+      "description": "Grundläggande mätvärden för inlägg",
+      "fields": {
+        "impressions": {
+          "required": true,
+          "aliases": ["Impressions"],
+          "type": "number",
+          "aggregationType": "sum",
+          "description": "Antal sidvisningar"
+        }
+      }
+    },
+    "reach": {
+      "title": "Räckvidd",
+      "description": "Mätvärden för inläggets räckvidd",
+      "fields": {
+        "totalReach": {
+          "required": true,
+          "aliases": ["Reach", "Räckvidd", "Total räckvidd"],
+          "type": "number",
+          "aggregationType": "max",
+          "description": "Total räckvidd för inlägget"
+        },
+        "organicReach": {
+          "required": true,
+          "aliases": ["Reach from Organic posts", "Räckvidd från organiska inlägg"],
+          "type": "number",
+          "aggregationType": "sum",
+          "description": "Räckvidd från obetalda inlägg"
+        }
+      }
+    },
+    "engagement": {
+      "title": "Engagemang",
+      "description": "Mätvärden för användarengagemang",
+      "fields": {
+        "totalEngagement": {
+          "required": true,
+          "aliases": [
+            "Reactions, Comments and Shares",
+            "Reaktioner, kommentarer och delningar"
+          ],
+          "type": "number",
+          "aggregationType": "sum",
+          "description": "Totalt engagemang"
+        },
+        "reactions": {
+          "required": true,
+          "aliases": ["Reactions", "Reaktioner"],
+          "type": "number",
+          "aggregationType": "sum",
+          "description": "Antal reaktioner"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,152 @@
+/**
+ * Databearbetning för Facebook-statistik
+ */
+import Papa from 'papaparse';
+import { getAccountViewData, getPostViewData } from './webStorageService';
+
+// Displaynamn för tillgängliga fält i per-konto vyn
+export const ACCOUNT_VIEW_FIELDS = {
+  'impressions': 'Sidvisningar',
+  'average_reach': 'Genomsnittlig räckvidd',
+  'engagement_total': 'Reaktioner, kommentarer och delningar',
+  'reactions': 'Reaktioner',
+  'comments': 'Kommentarer',
+  'shares': 'Delningar',
+  'total_clicks': 'Totalt antal klick',
+  'other_clicks': 'Övriga klick',
+  'link_clicks': 'Länkklick'
+};
+
+// Displaynamn för tillgängliga fält i per-inlägg vyn
+export const POST_VIEW_FIELDS = {
+  'post_reach': 'Posträckvidd',
+  'impressions': 'Sidvisningar',
+  'engagement_total': 'Reaktioner, kommentarer och delningar',
+  'reactions': 'Reaktioner',
+  'comments': 'Kommentarer',
+  'shares': 'Delningar',
+  'total_clicks': 'Totalt antal klick',
+  'other_clicks': 'Övriga klick',
+  'link_clicks': 'Länkklick'
+};
+
+// Displaynamn för metadata-fält som inte är mätvärden
+export const METADATA_FIELDS = {
+  'post_id': 'Post ID',
+  'page_id': 'Sid-ID',
+  'page_name': 'Sidnamn',
+  'title': 'Titel',
+  'description': 'Beskrivning',
+  'publish_time': 'Publiceringstid',
+  'post_type': 'Typ',
+  'permalink': 'Länk',
+};
+
+/**
+ * Normalisera text för konsistent jämförelse
+ */
+function normalizeText(text) {
+  if (text === null || text === undefined) return '';
+  return text.toString()
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ') // Hantera multipla mellanslag
+    .replace(/[\u200B-\u200D\uFEFF]/g, ''); // Ta bort osynliga tecken
+}
+
+/**
+ * Parse and process CSV data
+ */
+export const processCSVData = async (csvContent) => {
+  return await getProcessedData();
+};
+
+/**
+ * Hämtar data från localStorage/IndexedDB
+ */
+export const getProcessedData = async () => {
+  const accountViewData = await getAccountViewData();
+  const postViewData = await getPostViewData();
+  
+  return {
+    rows: postViewData,
+    accountViewData: accountViewData,
+    postViewData: postViewData
+  };
+};
+
+/**
+ * Summerar data per konto
+ */
+export const summarizeByAccount = (data, selectedFields) => {
+  if (!Array.isArray(data) || data.length === 0 || !selectedFields) {
+    return [];
+  }
+  
+  // Gruppera per konto-ID
+  const groupedByAccount = data.reduce((acc, post) => {
+    const accountId = post.page_id;
+    if (!accountId) return acc;
+    
+    if (!acc[accountId]) {
+      acc[accountId] = {
+        page_id: accountId,
+        page_name: post.page_name || 'Okänt konto',
+        posts: []
+      };
+    }
+    
+    acc[accountId].posts.push(post);
+    return acc;
+  }, {});
+  
+  // Räkna ut summerade värden för varje konto
+  const summaryData = Object.values(groupedByAccount).map(account => {
+    const summary = {
+      page_id: account.page_id,
+      page_name: account.page_name
+    };
+    
+    // Beräkna summa/genomsnitt för varje valt fält
+    selectedFields.forEach(field => {
+      if (field === 'average_reach') {
+        // Specialhantering för genomsnittlig räckvidd
+        const totalReach = account.posts.reduce((sum, post) => {
+          return sum + (post.post_reach || 0);
+        }, 0);
+        summary.average_reach = account.posts.length > 0 
+          ? Math.round(totalReach / account.posts.length) 
+          : 0;
+      } else {
+        // Summera övriga värden
+        summary[field] = account.posts.reduce((sum, post) => {
+          return sum + (post[field] || 0);
+        }, 0);
+      }
+    });
+    
+    return summary;
+  });
+  
+  return summaryData;
+};
+
+/**
+ * Returnerar en lista med unika sidnamn från data
+ */
+export function getUniquePageNames(data) {
+  if (!Array.isArray(data)) return [];
+  
+  // Extrahera och deduplicera sidnamn
+  const pageNames = new Set();
+  
+  data.forEach(post => {
+    const pageName = post.page_name || 
+                     post['Page name'];
+    if (pageName) {
+      pageNames.add(pageName);
+    }
+  });
+  
+  return Array.from(pageNames).sort();
+}
