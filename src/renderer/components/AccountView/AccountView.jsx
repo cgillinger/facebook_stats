@@ -5,7 +5,7 @@ import { summarizeByAccount, ACCOUNT_VIEW_FIELDS } from '@/utils/dataProcessing'
 import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileDown, FileSpreadsheet } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Button } from '../ui/button';
-import { readColumnMappings } from '../ColumnMappingEditor/columnMappingService';
+import { readColumnMappings, formatValue, formatDate } from '../ColumnMappingEditor/columnMappingService';
 
 const PAGE_SIZE_OPTIONS = [
   { value: '10', label: '10 per sida' },
@@ -60,13 +60,6 @@ const AccountView = ({ data, selectedFields }) => {
     }
     
     return obj[columnName];
-  };
-
-  const formatValue = (value) => {
-    if (value === null) return 'Saknas';
-    if (value === 0) return '0';
-    if (typeof value === 'number') return value.toLocaleString();
-    return value || '-';
   };
 
   const handleSort = (key) => {

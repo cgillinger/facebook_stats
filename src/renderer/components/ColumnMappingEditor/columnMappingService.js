@@ -150,3 +150,33 @@ export async function saveColumnMappings(mappings) {
     throw new Error('Kunde inte spara kolumnmappningar');
   }
 }
+
+/**
+ * Formaterar värden för visning i UI
+ */
+export function formatValue(value) {
+  if (value === null || value === undefined) return 'Saknas';
+  if (value === 0) return '0';
+  if (typeof value === 'number') return value.toLocaleString('sv-SE');
+  return value || '-';
+}
+
+/**
+ * Formaterar datum för visning enligt svensk standard
+ */
+export function formatDate(dateStr) {
+  if (!dateStr) return '';
+  try {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('sv-SE', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return dateStr;
+  }
+}

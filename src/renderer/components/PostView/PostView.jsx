@@ -3,7 +3,7 @@ import { Card } from '../ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, ChevronLeft, ChevronRight, FileDown, FileSpreadsheet } from 'lucide-react';
 import { POST_VIEW_FIELDS, METADATA_FIELDS, getUniquePageNames } from '../../../utils/dataProcessing';
-import { readColumnMappings, DISPLAY_NAMES } from '../ColumnMappingEditor/columnMappingService';
+import { readColumnMappings, DISPLAY_NAMES, formatDate, formatValue } from '../ColumnMappingEditor/columnMappingService';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Button } from '../ui/button';
 
@@ -171,13 +171,6 @@ const PostView = ({ data, selectedFields }) => {
     return value;
   };
 
-  const formatValue = (value) => {
-    if (value === null || value === undefined) return 'Saknas';
-    if (value === 0) return '0';
-    if (typeof value === 'number') return value.toLocaleString();
-    return value || '-';
-  };
-
   const handleExportToExcel = async () => {
     try {
       const exportData = formatDataForExport(sortedData);
@@ -224,23 +217,6 @@ const PostView = ({ data, selectedFields }) => {
 
       return formattedPost;
     });
-  };
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString('sv-SE', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch (error) {
-      console.error('Error formatting date:', error);
-      return dateStr;
-    }
   };
 
   const sortData = (dataToSort, sortKey, direction) => {
@@ -422,7 +398,7 @@ const PostView = ({ data, selectedFields }) => {
                   </div>
                 </TableCell>
                 <TableCell className="whitespace-nowrap">
-                  {formatValue(getValue(post, 'publish_time'))}
+                  {formatDate(getValue(post, 'publish_time'))}
                 </TableCell>
                 <TableCell>{formatValue(getValue(post, 'page_name'))}</TableCell>
                 {selectedFields.map(field => (
