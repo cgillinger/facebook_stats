@@ -14,7 +14,9 @@ export const ACCOUNT_VIEW_FIELDS = {
   'shares': 'Delningar',
   'total_clicks': 'Totalt antal klick',
   'other_clicks': 'Övriga klick',
-  'link_clicks': 'Länkklick'
+  'link_clicks': 'Länkklick',
+  'post_count': 'Antal publiceringar',
+  'posts_per_day': 'Publiceringar per dag'
 };
 
 // Displaynamn för tillgängliga fält i per-inlägg vyn
@@ -76,6 +78,79 @@ export const getProcessedData = async () => {
 };
 
 /**
+ * Hjälpfunktion för att konvertera en dateString till Date-objekt
+ * Hanterar olika datumformat
+ */
+function parseDate(dateStr) {
+  if (!dateStr) return null;
+  
+  try {
+    // Testa standardformat
+    const date = new Date(dateStr);
+    // Kontrollera att det är ett giltigt datum
+    if (!isNaN(date.getTime())) {
+      return date;
+    }
+    
+    // Testa svenska datumformat (YYYY-MM-DD HH:MM:SS)
+    const svMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}):(\d{2}):(\d{2}))?$/);
+    if (svMatch) {
+      const [_, year, month, day, hour, minute, second] = svMatch;
+      return new Date(
+        parseInt(year),
+        parseInt(month) - 1,
+        parseInt(day),
+        hour ? parseInt(hour) : 0,
+        minute ? parseInt(minute) : 0,
+        second ? parseInt(second) : 0
+      );
+    }
+    
+    // Testa amerikanskt datumformat (MM/DD/YYYY HH:MM:SS)
+    const usMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
+    if (usMatch) {
+      const [_, month, day, year, hour, minute, second] = usMatch;
+      return new Date(
+        parseInt(year),
+        parseInt(month) - 1,
+        parseInt(day),
+        hour ? parseInt(hour) : 0,
+        minute ? parseInt(minute) : 0,
+        second ? parseInt(second) : 0
+      );
+    }
+    
+    // Fler format kan läggas till här efter behov
+    
+  } catch (error) {
+    console.error('Fel vid datumparsning:', error);
+  }
+  
+  return null;
+}
+
+/**
+ * Beräknar antal dagar mellan två datum
+ */
+function daysBetween(startDate, endDate) {
+  if (!startDate || !endDate) return 0;
+  
+  const oneDay = 24 * 60 * 60 * 1000; // millisekunder per dag
+  
+  // Justera till UTC midnatt för konsekvent datumjämförelse
+  const start = new Date(startDate);
+  start.setUTCHours(0, 0, 0, 0);
+  
+  const end = new Date(endDate);
+  end.setUTCHours(0, 0, 0, 0);
+  
+  // Beräkna skillnaden i dagar, plus 1 för att inkludera både start- och slutdatum
+  const diffDays = Math.round(Math.abs((end - start) / oneDay)) + 1;
+  
+  return diffDays;
+}
+
+/**
  * Summerar data per konto
  */
 export const summarizeByAccount = (data, selectedFields) => {
@@ -117,7 +192,37 @@ export const summarizeByAccount = (data, selectedFields) => {
         summary.average_reach = account.posts.length > 0 
           ? Math.round(totalReach / account.posts.length) 
           : 0;
-      } else {
+      } 
+      else if (field === 'post_count') {
+        // Specialhantering för antal publiceringar
+        summary.post_count = account.posts.length;
+      }
+      else if (field === 'posts_per_day') {
+        // Specialhantering för publiceringar per dag
+        // Hitta tidigaste och senaste publiceringsdatum
+        let earliestDate = null;
+        let latestDate = null;
+        
+        account.posts.forEach(post => {
+          const publishDate = parseDate(post.publish_time);
+          if (publishDate) {
+            if (!earliestDate || publishDate < earliestDate) {
+              earliestDate = publishDate;
+            }
+            if (!latestDate || publishDate > latestDate) {
+              latestDate = publishDate;
+            }
+          }
+        });
+        
+        const dayCount = daysBetween(earliestDate, latestDate);
+        const postsPerDay = dayCount > 0 
+          ? parseFloat((account.posts.length / dayCount).toFixed(2)) 
+          : account.posts.length; // Om alla på samma dag, returnera antalet
+        
+        summary.posts_per_day = postsPerDay;
+      }
+      else {
         // Summera övriga värden
         summary[field] = account.posts.reduce((sum, post) => {
           return sum + (post[field] || 0);

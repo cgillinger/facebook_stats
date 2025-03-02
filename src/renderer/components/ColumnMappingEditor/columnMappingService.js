@@ -46,14 +46,17 @@ export const DISPLAY_NAMES = {
   'shares': 'Delningar',
   'total_clicks': 'Totalt antal klick',
   'other_clicks': 'Övriga klick',
-  'link_clicks': 'Länkklick'
+  'link_clicks': 'Länkklick',
+  'post_count': 'Antal publiceringar',
+  'posts_per_day': 'Publiceringar per dag'
 };
 
 // Gruppera kolumner för bättre översikt
 export const COLUMN_GROUPS = {
   'Metadata': ['post_id', 'page_id', 'page_name', 'title', 'description', 'publish_time', 'post_type', 'permalink'],
   'Räckvidd och visningar': ['impressions', 'post_reach', 'average_reach'],
-  'Engagemang': ['engagement_total', 'reactions', 'comments', 'shares', 'total_clicks', 'other_clicks', 'link_clicks']
+  'Engagemang': ['engagement_total', 'reactions', 'comments', 'shares', 'total_clicks', 'other_clicks', 'link_clicks'],
+  'Publiceringsstatistik': ['post_count', 'posts_per_day']
 };
 
 let cachedMappings = null;

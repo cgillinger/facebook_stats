@@ -33,7 +33,9 @@ const ACCOUNT_VIEW_AVAILABLE_FIELDS = {
   'shares': 'Delningar',
   'total_clicks': 'Totalt antal klick',
   'other_clicks': 'Övriga klick',
-  'link_clicks': 'Länkklick'
+  'link_clicks': 'Länkklick',
+  'post_count': 'Antal publiceringar',
+  'posts_per_day': 'Publiceringar per dag'
 };
 
 const ValueSelector = ({ availableFields, selectedFields, onSelectionChange }) => (
