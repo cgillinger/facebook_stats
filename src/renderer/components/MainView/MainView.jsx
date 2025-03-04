@@ -14,7 +14,7 @@ import { ACCOUNT_VIEW_FIELDS, POST_VIEW_FIELDS } from '@/utils/dataProcessing';
 const POST_VIEW_AVAILABLE_FIELDS = {
   'post_reach': 'Posträckvidd',
   'impressions': 'Sidvisningar',
-  'engagement_total': 'Reaktioner, kommentarer och delningar',
+  'engagement_total': 'Interaktioner',
   'reactions': 'Reaktioner',
   'comments': 'Kommentarer',
   'shares': 'Delningar',
@@ -27,7 +27,7 @@ const POST_VIEW_AVAILABLE_FIELDS = {
 const ACCOUNT_VIEW_AVAILABLE_FIELDS = {
   'impressions': 'Sidvisningar',
   'average_reach': 'Genomsnittlig räckvidd',
-  'engagement_total': 'Reaktioner, kommentarer och delningar',
+  'engagement_total': 'Interaktioner',
   'reactions': 'Reaktioner',
   'comments': 'Kommentarer',
   'shares': 'Delningar',

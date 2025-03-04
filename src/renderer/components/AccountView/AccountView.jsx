@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '../ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { summarizeByAccount, ACCOUNT_VIEW_FIELDS } from '@/utils/dataProcessing';
-import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileDown, FileSpreadsheet } from 'lucide-react';
+import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileDown, FileSpreadsheet, Calculator } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Button } from '../ui/button';
 import { readColumnMappings, formatValue, formatDate } from '../ColumnMappingEditor/columnMappingService';
@@ -13,12 +13,26 @@ const PAGE_SIZE_OPTIONS = [
   { value: '50', label: '50 per sida' }
 ];
 
+// Lista över fält som ska visa totalsumma
+const FIELDS_WITH_TOTALS = [
+  'impressions',
+  'reactions',
+  'total_clicks',
+  'post_count',
+  'comments',
+  'other_clicks',
+  'engagement_total',
+  'shares',
+  'link_clicks'
+];
+
 const AccountView = ({ data, selectedFields }) => {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [columnMappings, setColumnMappings] = useState({});
   const [summaryData, setSummaryData] = useState([]);
+  const [totalSummary, setTotalSummary] = useState({});
 
   useEffect(() => {
     const loadMappings = async () => {
@@ -37,9 +51,24 @@ const AccountView = ({ data, selectedFields }) => {
       try {
         const summary = await summarizeByAccount(data, selectedFields);
         setSummaryData(summary);
+        
+        // Beräkna totalsummor för alla fält
+        if (Array.isArray(summary) && summary.length > 0) {
+          const totals = {};
+          selectedFields.forEach(field => {
+            if (FIELDS_WITH_TOTALS.includes(field)) {
+              totals[field] = summary.reduce((sum, account) => {
+                return sum + (account[field] || 0);
+              }, 0);
+            }
+          });
+          setTotalSummary(totals);
+        }
+        
       } catch (error) {
         console.error('Failed to load summary data:', error);
         setSummaryData([]);
+        setTotalSummary({});
       }
     };
     loadSummaryData();
@@ -217,6 +246,25 @@ const AccountView = ({ data, selectedFields }) => {
             </TableRow>
           </TableHeader>
           <TableBody>
+            {/* Totalsumma-rad med förbättrad styling */}
+            <TableRow className="bg-primary/5 border-b-2 border-primary/20">
+              <TableCell className="font-semibold text-primary-foreground flex items-center">
+                <Calculator className="w-4 h-4 mr-2 text-primary" />
+                <span className="text-primary">Totalt</span>
+              </TableCell>
+              {selectedFields.map(field => (
+                <TableCell 
+                  key={field} 
+                  className="text-right font-semibold text-primary"
+                >
+                  {FIELDS_WITH_TOTALS.includes(field) 
+                    ? formatValue(totalSummary[field]) 
+                    : ''}
+                </TableCell>
+              ))}
+            </TableRow>
+            
+            {/* Data-rader */}
             {paginatedData.map((account) => (
               <TableRow key={`${getValue(account, 'page_id')}-${getValue(account, 'page_name')}`}>
                 <TableCell className="font-medium">

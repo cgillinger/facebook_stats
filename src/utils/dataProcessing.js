@@ -8,7 +8,7 @@ import { getAccountViewData, getPostViewData } from './webStorageService';
 export const ACCOUNT_VIEW_FIELDS = {
   'impressions': 'Sidvisningar',
   'average_reach': 'Genomsnittlig räckvidd',
-  'engagement_total': 'Reaktioner, kommentarer och delningar',
+  'engagement_total': 'Interaktioner',
   'reactions': 'Reaktioner',
   'comments': 'Kommentarer',
   'shares': 'Delningar',
@@ -23,7 +23,7 @@ export const ACCOUNT_VIEW_FIELDS = {
 export const POST_VIEW_FIELDS = {
   'post_reach': 'Posträckvidd',
   'impressions': 'Sidvisningar',
-  'engagement_total': 'Reaktioner, kommentarer och delningar',
+  'engagement_total': 'Interaktioner',
   'reactions': 'Reaktioner',
   'comments': 'Kommentarer',
   'shares': 'Delningar',
