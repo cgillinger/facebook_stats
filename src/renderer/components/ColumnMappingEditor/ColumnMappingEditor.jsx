@@ -95,22 +95,54 @@ export function ColumnMappingEditor() {
     console.log('Från:', originalName);
     console.log('Till:', newValue);
     
+    // FÖRBÄTTRING 1: Validera det nya värdet innan vi gör några ändringar
+    if (!newValue || newValue.trim() === '') {
+      console.error('ColumnMappingEditor: Kolumnnamn kan inte vara tomt');
+      setError(`Kolumnnamnet kan inte vara tomt. Ändring från "${originalName}" avbröts.`);
+      return;
+    }
+    
     setMappings(prev => {
       // Skapa en kopia av det tidigare state:t
       const newMappings = { ...prev };
-      console.log('ColumnMappingEditor: Tidigare mappningar:', prev);
+      console.log('ColumnMappingEditor: Tidigare mappningar:', JSON.stringify(newMappings, null, 2));
       
       // Spara det interna namnet som denna kolumn ska mappa till
       const internalName = newMappings[originalName];
       console.log('ColumnMappingEditor: Internt namn att bevara:', internalName);
       
-      // Ta bort den gamla mappningen
-      delete newMappings[originalName];
-      console.log('ColumnMappingEditor: Efter borttagning av gammal mappning:', newMappings);
+      if (!internalName) {
+        console.error(`ColumnMappingEditor: Kunde inte hitta internt namn för "${originalName}"`);
+        // Om vi inte hittar det interna namnet, avbryt operationen
+        return prev;
+      }
       
-      // Lägg till den nya mappningen
+      // FÖRBÄTTRING 2: Lägg till den nya mappningen innan vi tar bort den gamla
       newMappings[newValue] = internalName;
-      console.log('ColumnMappingEditor: Efter tillägg av ny mappning:', newMappings);
+      console.log('ColumnMappingEditor: Efter tillägg av ny mappning:', JSON.stringify(newMappings, null, 2));
+      
+      // FÖRBÄTTRING 3: Ta endast bort den gamla mappningen om den nya kunde läggas till
+      if (newMappings[newValue] === internalName) {
+        // Den nya mappningen lades till framgångsrikt, nu kan vi ta bort den gamla
+        if (newValue !== originalName) { // Undvik borttagning om samma namn
+          delete newMappings[originalName];
+          console.log('ColumnMappingEditor: Efter borttagning av gammal mappning:', JSON.stringify(newMappings, null, 2));
+        }
+      } else {
+        console.error(`ColumnMappingEditor: Kunde inte lägga till ny mappning "${newValue}"`);
+        // Om något gick fel, behåll den ursprungliga mappningen
+        return prev;
+      }
+      
+      // FÖRBÄTTRING 4: Verifiera att det interna namnet fortfarande finns i mappningarna
+      const containsInternalName = Object.values(newMappings).includes(internalName);
+      if (!containsInternalName) {
+        console.error(`ColumnMappingEditor: Internt namn "${internalName}" saknas i uppdaterade mappningar!`);
+        console.log('Försöker återställa ursprunglig mappning...');
+        // Om det interna namnet saknas, återställ till ursprungligt tillstånd
+        newMappings[originalName] = internalName;
+        return newMappings;
+      }
       
       return newMappings;
     });
@@ -120,7 +152,6 @@ export function ColumnMappingEditor() {
   const getOrderedMappingsForGroup = (internalNames) => {
     console.log('ColumnMappingEditor: Hämtar ordnade mappningar för grupp');
     console.log('InternalNames:', internalNames);
-    console.log('Aktuella mappningar:', mappings);
     
     // Create a map of internal name to original name for quick lookup
     const internalToOriginal = Object.entries(mappings).reduce((acc, [original, internal]) => {
@@ -229,7 +260,7 @@ export function ColumnMappingEditor() {
                         </TableCell>
                         <TableCell>
                           <Input
-                            value={originalName}
+                            value={originalName || ''}
                             onChange={(e) => handleValueChange(originalName, e.target.value)}
                             className="max-w-sm"
                             disabled={isSaving || isResetting}

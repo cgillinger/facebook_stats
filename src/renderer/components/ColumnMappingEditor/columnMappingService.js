@@ -237,6 +237,27 @@ export function validateRequiredColumns(csvHeaders) {
  */
 export async function saveColumnMappings(mappings) {
   try {
+    // FÖRBÄTTRING: Validera att alla nödvändiga mappningar finns
+    const requiredInternalNames = [
+      'impressions',
+      'post_reach',
+      'total_clicks',
+      'reactions',
+      'comments',
+      'shares'
+    ];
+    
+    // Kontrollera att alla viktiga interna namn finns i mappningarna
+    const missingInternals = requiredInternalNames.filter(
+      name => !Object.values(mappings).includes(name)
+    );
+    
+    if (missingInternals.length > 0) {
+      const missingNames = missingInternals.map(name => DISPLAY_NAMES[name] || name).join(', ');
+      console.error(`Saknade nödvändiga mappningar för: ${missingNames}`);
+      throw new Error(`Viktiga kolumnmappningar saknas: ${missingNames}`);
+    }
+    
     console.log('Sparar nya kolumnmappningar:', mappings);
     
     // Spara mappningar i localStorage via webStorageService
@@ -249,7 +270,7 @@ export async function saveColumnMappings(mappings) {
     return true;
   } catch (error) {
     console.error('Fel vid sparande av kolumnmappningar:', error);
-    throw new Error('Kunde inte spara kolumnmappningar');
+    throw new Error('Kunde inte spara kolumnmappningar: ' + error.message);
   }
 }
 
