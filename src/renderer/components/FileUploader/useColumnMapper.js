@@ -1,9 +1,19 @@
 import { useState, useEffect, useMemo } from 'react';
-import { DEFAULT_MAPPINGS, DISPLAY_NAMES, getCurrentMappings } from '../ColumnMappingEditor/columnMappingService';
-import Papa from 'papaparse';  // Direkt import av Papaparse istället för require
+import { EXCLUDED_COLUMN_NAMES, DISPLAY_NAMES, getCurrentMappings } from '../ColumnMappingEditor/columnMappingService';
+import Papa from 'papaparse';
 
 /**
- * Normalisera text för konsistent jämförelse
+ * Kontrollerar om ett kolumnnamn ska exkluderas från automatisk mappning
+ */
+function isExcludedColumn(columnName) {
+  if (!columnName) return true;
+  return EXCLUDED_COLUMN_NAMES.some(excluded => 
+    normalizeText(columnName) === normalizeText(excluded)
+  );
+}
+
+/**
+ * Normalisera text för konsekvent jämförelse
  */
 function normalizeText(text) {
   if (text === null || text === undefined) return '';
@@ -19,7 +29,7 @@ function normalizeText(text) {
  * @returns {Object} Kolumnmappningsverktyg
  */
 export function useColumnMapper() {
-  const [currentMappings, setCurrentMappings] = useState(DEFAULT_MAPPINGS);
+  const [currentMappings, setCurrentMappings] = useState({});
   const [missingColumns, setMissingColumns] = useState([]);
 
   useEffect(() => {
@@ -30,38 +40,29 @@ export function useColumnMapper() {
         setCurrentMappings(mappings);
       } catch (error) {
         console.error('Fel vid laddning av mappningar:', error);
-        setCurrentMappings(DEFAULT_MAPPINGS);
+        setCurrentMappings({});
       }
     };
     loadMappings();
   }, []);
-
-  const findMatchingKey = (header) => {
-    if (!header) return null;
-    
-    const normalizedHeader = normalizeText(header);
-    
-    const entry = Object.entries(currentMappings)
-      .find(([originalName]) => normalizeText(originalName) === normalizedHeader);
-    
-    return entry ? entry[1] : null;
-  };
 
   /**
    * Validerar CSV-innehåll mot konfigurerade mappningar
    */
   const validateColumns = (csvContent) => {
     try {
-      // Använd importerad Papaparse istället för require
       const result = Papa.parse(csvContent, { 
         header: true, 
-        preview: 1,
+        preview: 5,
         skipEmptyLines: true
       });
       
       if (!result.meta || !result.meta.fields) {
         throw new Error('Kunde inte läsa kolumnnamn från CSV');
       }
+      
+      // Logga alla kolumner för felsökning
+      console.log('CSV-kolumner från validering:', result.meta.fields);
       
       const headers = result.meta.fields;
       return validateHeaders(headers);
@@ -75,7 +76,7 @@ export function useColumnMapper() {
    * Validerar headers mot konfigurerade mappningar
    */
   const validateHeaders = (headers) => {
-    console.log('Validating headers:', headers);
+    console.log('Validering av headers:', headers);
     
     if (!headers || !Array.isArray(headers)) {
       console.error('Invalid headers input:', headers);
@@ -87,53 +88,130 @@ export function useColumnMapper() {
       };
     }
 
-    const foundInternalNames = new Set();
-    const missing = [];
-    const found = [];
-    const unknown = [];
-
-    // Kontrollera varje header och hitta matchningar
+    // Kontrollera vilka kolumnnamn som finns i CSV-filen
+    const normalizedHeadersMap = new Map();
     headers.forEach(header => {
-      const internalName = findMatchingKey(header);
+      // Hoppa över exkluderade kolumner
+      if (!isExcludedColumn(header)) {
+        normalizedHeadersMap.set(normalizeText(header), header);
+      }
+    });
+    
+    console.log('Normaliserade headers:', Array.from(normalizedHeadersMap.keys()));
+
+    // Skapa map av alla interna namn som används i mappningen
+    const internalNames = new Set();
+    const externalToInternal = new Map();
+    
+    Object.entries(currentMappings).forEach(([externalName, internalName]) => {
+      if (!isExcludedColumn(externalName)) {
+        internalNames.add(internalName);
+        externalToInternal.set(normalizeText(externalName), internalName);
+      }
+    });
+
+    // Hitta vilka interna namn som finns i CSV-headern
+    const foundInternalNames = new Set();
+    const foundExternalNames = new Map(); // internalName -> externalName
+    
+    for (const [normHeader, originalHeader] of normalizedHeadersMap.entries()) {
+      const internalName = externalToInternal.get(normHeader);
       if (internalName) {
         foundInternalNames.add(internalName);
-        found.push({
-          header,
-          internalName,
-          displayName: DISPLAY_NAMES[internalName]
-        });
-      } else {
-        unknown.push(header);
+        foundExternalNames.set(internalName, originalHeader);
       }
-    });
+    }
 
-    // Hitta saknade obligatoriska fält genom att jämföra med vad vi hittat
-    Object.entries(currentMappings).forEach(([originalName, internalName]) => {
-      if (!foundInternalNames.has(internalName)) {
-        missing.push({
-          original: originalName,
-          internal: internalName,
-          displayName: DISPLAY_NAMES[internalName]
-        });
-      }
-    });
+    // Nödvändiga kolumner för att fungera
+    const requiredInternalNames = [
+      'impressions',     // Visningar
+      'post_reach'       // Räckvidd
+    ];
+    
+    // Hitta saknade nödvändiga kolumner
+    const missingRequired = requiredInternalNames.filter(name => !foundInternalNames.has(name));
+    
+    console.log('Hittade interna namn:', Array.from(foundInternalNames));
+    console.log('Saknade nödvändiga kolumner:', missingRequired);
 
-    // Uppdatera state för att visa varningar i UI
+    // Skapa en lista över saknade kolumner för UI
+    const missing = [];
+    
+    // Lägg till saknade kolumner i listan
+    Array.from(internalNames)
+      .filter(internalName => !foundInternalNames.has(internalName))
+      .forEach(internalName => {
+        // Hitta externalName för detta interna namn
+        const externalName = Object.entries(currentMappings).find(
+          ([_, internal]) => internal === internalName
+        )?.[0];
+        
+        if (externalName) {
+          missing.push({
+            original: externalName,
+            internal: internalName,
+            displayName: DISPLAY_NAMES[internalName]
+          });
+        }
+      });
+
+    // Uppdatera state för saknade kolumner (används för UI-meddelanden)
     setMissingColumns(missing);
 
-    // Endast för debug-syfte
-    console.log('Validation results:', {
-      foundColumns: found.map(f => f.internalName),
-      missingColumns: missing.map(m => m.internal),
-      isValid: missing.length === 0
+    const isValid = missingRequired.length === 0;
+    
+    console.log('Validering slutförd:', {
+      isValid,
+      saknade: missing.length,
+      nödvändigaSaknade: missingRequired.length
     });
 
+    // Skapa resultatet
     return {
-      isValid: missing.length === 0,
-      missing,
-      found,
-      unknown
+      isValid: isValid,
+      missing: missing,
+      found: Array.from(foundInternalNames).map(internalName => ({
+        header: foundExternalNames.get(internalName),
+        internalName: internalName,
+        displayName: DISPLAY_NAMES[internalName]
+      })),
+      unknown: headers.filter(header => 
+        !Array.from(foundExternalNames.values()).includes(header) && !isExcludedColumn(header)
+      )
     };
+  };
+
+  /**
+   * Konverterar en rad från CSV till standardiserat format 
+   * genom exakt matchning mot kolumnmappningar
+   */
+  const standardizeRow = (row) => {
+    if (!row || typeof row !== 'object') {
+      console.error('Invalid row data:', row);
+      return {};
+    }
+
+    const standardized = {};
+    
+    // Skapa Map för snabb uppslag
+    const normalizedMappings = new Map();
+    Object.entries(currentMappings).forEach(([externalName, internalName]) => {
+      if (!isExcludedColumn(externalName)) {
+        normalizedMappings.set(normalizeText(externalName), internalName);
+      }
+    });
+    
+    // För varje kolumn i raden, hitta motsvarande internt namn
+    Object.entries(row).forEach(([colName, value]) => {
+      const normalizedColName = normalizeText(colName);
+      const internalName = normalizedMappings.get(normalizedColName);
+      
+      if (internalName) {
+        standardized[internalName] = value;
+      }
+    });
+
+    return standardized;
   };
 
   return useMemo(() => ({
@@ -150,26 +228,7 @@ export function useColumnMapper() {
     /**
      * Konverterar en rad från CSV till standardiserat format
      */
-    standardizeRow(row) {
-      if (!row || typeof row !== 'object') {
-        console.error('Invalid row data:', row);
-        return {};
-      }
-
-      const standardized = {};
-      const rowEntries = Object.entries(row);
-      const normalizedRowMap = new Map(
-        rowEntries.map(([key, value]) => [normalizeText(key), value])
-      );
-
-      // Standardisera varje fält baserat på mappningen
-      Object.entries(currentMappings).forEach(([originalName, internalName]) => {
-        const normalizedKey = normalizeText(originalName);
-        standardized[internalName] = normalizedRowMap.get(normalizedKey) ?? null;
-      });
-
-      return standardized;
-    },
+    standardizeRow,
 
     /**
      * Returnerar mappning mellan original och interna namn

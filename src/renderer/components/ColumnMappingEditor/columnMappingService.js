@@ -3,44 +3,56 @@
  */
 import { readColumnMappings as getStoredMappings, saveColumnMappings as storeColumnMappings } from '../../../utils/webStorageService';
 
-// Endast kolumner som faktiskt används i vyerna
+// Endast kolumner som faktiskt används i vyerna - Svenska som standard
 export const DEFAULT_MAPPINGS = {
   // Metadata (visas i PostView)
-  "Post ID": "post_id",
-  "Page ID": "page_id",
-  "Page name": "page_name",
-  "Title": "title",
-  "Description": "description",
-  "Publish time": "publish_time",
-  "Post type": "post_type",
-  "Permalink": "permalink",
+  "Publicerings-id": "post_id",
+  "Sid-id": "page_id",
+  "Sidnamn": "page_name",
+  "Titel": "title",
+  "Beskrivning": "description",
+  "Publiceringstid": "publish_time",
+  "Inläggstyp": "post_type",
+  "Permalänk": "permalink",
   
   // Mätvärden
-  "Impressions": "impressions",
-  "Reach": "post_reach",
-  "Reactions, Comments and Shares": "engagement_total",
-  "Reactions": "reactions",
-  "Comments": "comments",
-  "Shares": "shares",
-  "Total clicks": "total_clicks",
-  "Other Clicks": "other_clicks",
-  "Link Clicks": "link_clicks"
+  "Visningar": "impressions",
+  "Räckvidd": "post_reach",
+  "Reaktioner, kommentarer och delningar": "engagement_total",
+  "Reaktioner": "reactions",
+  "Kommentarer": "comments",
+  "Delningar": "shares",
+  "Totalt antal klick": "total_clicks",
+  "Övriga klick": "other_clicks",
+  "Länkklick": "link_clicks"
 };
+
+// Explicita undantag som inte ska mappas automatiskt
+export const EXCLUDED_COLUMN_NAMES = [
+  "Ad impressions",  // Ska inte mappas till impressions
+  "Ad CPM (USD)",    // Ska inte mappas till någon standard-kolumn
+  "Ad spend (USD)",
+  "Ad clicks",
+  "Ad reach",
+  "Paid Impressions",
+  "Paid Reach",
+  "Premium Impressions"
+];
 
 // Beskrivande namn för användargränssnittet
 export const DISPLAY_NAMES = {
-  'post_id': 'Post ID',
-  'page_id': 'Sid-ID',
+  'post_id': 'Publicerings-id',
+  'page_id': 'Sid-id',
   'page_name': 'Sidnamn',
   'title': 'Titel',
   'description': 'Beskrivning',
   'publish_time': 'Publiceringstid',
-  'post_type': 'Typ',
-  'permalink': 'Länk',
-  'impressions': 'Sidvisningar',
-  'post_reach': 'Posträckvidd',
+  'post_type': 'Inläggstyp',
+  'permalink': 'Permalänk',
+  'impressions': 'Visningar',
+  'post_reach': 'Räckvidd',
   'average_reach': 'Genomsnittlig räckvidd',
-  'engagement_total': 'Reaktioner, kommentarer och delningar',
+  'engagement_total': 'Interaktioner',  // Ändrat från 'Reaktioner, kommentarer och delningar' till 'Interaktioner'
   'reactions': 'Reaktioner',
   'comments': 'Kommentarer',
   'shares': 'Delningar',
@@ -71,6 +83,59 @@ function normalizeText(text) {
     .toLowerCase()
     .replace(/\s+/g, ' ') // Hantera multipla mellanslag
     .replace(/[\u200B-\u200D\uFEFF]/g, ''); // Ta bort osynliga tecken
+}
+
+/**
+ * Kontrollerar om ett kolumnnamn ska exkluderas från automatisk mappning
+ */
+function isExcludedColumn(columnName) {
+  if (!columnName) return true;
+  return EXCLUDED_COLUMN_NAMES.some(excluded => 
+    normalizeText(columnName) === normalizeText(excluded)
+  );
+}
+
+/**
+ * Återställer kolumnmappningar till standardvärden men bevarar användaranpassningar
+ */
+export async function resetMappingsToDefault() {
+  try {
+    console.log('Återställer kolumnmappningar till standard');
+
+    // Hämta befintliga mappningar om de finns
+    const currentMappings = cachedMappings || await getStoredMappings(DEFAULT_MAPPINGS);
+    
+    // Skapa en karta från internt namn -> externt namn
+    const internalToExternal = {};
+    for (const [externalName, internalName] of Object.entries(currentMappings)) {
+      internalToExternal[internalName] = externalName;
+    }
+    
+    // Skapa nya mappningar med standardvärden
+    const newMappings = { ...DEFAULT_MAPPINGS };
+    
+    // Hitta alla interna namn som inte finns i DEFAULT_MAPPINGS
+    // Dessa är troligen användaranpassningar som vi vill behålla
+    for (const [externalName, internalName] of Object.entries(currentMappings)) {
+      if (!Object.values(DEFAULT_MAPPINGS).includes(internalName)) {
+        // Detta är en kolumn som inte finns i standarduppsättningen
+        // Behåll användarens definition
+        newMappings[externalName] = internalName;
+      }
+    }
+    
+    // Spara de nya mappningarna
+    await storeColumnMappings(newMappings);
+    
+    // Uppdatera cachen
+    cachedMappings = newMappings;
+    
+    console.log('Kolumnmappningar återställda:', newMappings);
+    return newMappings;
+  } catch (error) {
+    console.error('Fel vid återställning av kolumnmappningar:', error);
+    throw error;
+  }
 }
 
 /**
@@ -110,23 +175,60 @@ export function validateRequiredColumns(csvHeaders) {
     return { isValid: false, missingColumns: [] };
   }
 
+  // Logga alla kolumner för felsökning
+  console.log('CSV-kolumner från validateRequiredColumns:', csvHeaders);
+
   // Skapa map av normaliserade headers
   const normalizedHeaders = new Set(
-    csvHeaders.map(header => normalizeText(header))
+    csvHeaders.filter(header => !isExcludedColumn(header))
+            .map(header => normalizeText(header))
   );
 
+  // Hämta aktuella mappningar
+  const currentMappings = cachedMappings || DEFAULT_MAPPINGS;
+  
   // Hitta saknade kolumner
-  const missingColumns = Object.entries(DEFAULT_MAPPINGS)
-    .filter(([originalName]) => !normalizedHeaders.has(normalizeText(originalName)))
+  const missingColumns = Object.entries(currentMappings)
+    .filter(([originalName, internalName]) => {
+      // Hoppa över exkluderade kolumnnamn
+      if (isExcludedColumn(originalName)) {
+        return false;
+      }
+      
+      // Kontrollera om vi kan hitta kolumnen i headers genom exakt matchning
+      return !normalizedHeaders.has(normalizeText(originalName));
+    })
     .map(([originalName, internalName]) => ({
       original: originalName,
       internal: internalName,
       displayName: DISPLAY_NAMES[internalName]
     }));
 
+  // Gruppera saknade kolumner på internt namn för att undvika dubbletter
+  const uniqueMissingColumns = [];
+  const processedInternals = new Set();
+  
+  missingColumns.forEach(col => {
+    if (!processedInternals.has(col.internal)) {
+      uniqueMissingColumns.push(col);
+      processedInternals.add(col.internal);
+    }
+  });
+
+  // Nödvändiga kolumner för att fungera
+  const requiredInternalNames = [
+    'impressions',     // Visningar
+    'post_reach'       // Räckvidd
+  ];
+  
+  // Kontrollera om alla nödvändiga kolumner finns
+  const missingRequiredInternals = requiredInternalNames.filter(
+    requiredName => uniqueMissingColumns.some(col => col.internal === requiredName)
+  );
+
   return {
-    isValid: missingColumns.length === 0,
-    missingColumns
+    isValid: missingRequiredInternals.length === 0,
+    missingColumns: uniqueMissingColumns
   };
 }
 

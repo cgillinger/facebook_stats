@@ -4,7 +4,7 @@ import { Button } from '../ui/button';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 import { Upload, FileWarning, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { handleFileUpload } from '@/utils/webStorageService';
-import { processFacebookData } from '@/utils/webDataProcessor';
+import { processFacebookData, clearProcessingCache } from '@/utils/webDataProcessor';
 import { useColumnMapper } from './useColumnMapper';
 
 export function FileUploader({ onDataProcessed, onCancel }) {
@@ -16,11 +16,15 @@ export function FileUploader({ onDataProcessed, onCancel }) {
   const [validationResult, setValidationResult] = useState(null);
   const [csvContent, setCsvContent] = useState(null);
   const fileInputRef = useRef(null);
+  const processingRef = useRef(false); // Ref för att undvika dubbla processer
   const { columnMappings, validateColumns, missingColumns } = useColumnMapper();
 
   const handleFileChange = (event) => {
     const selectedFile = event.target.files[0];
     if (selectedFile) {
+      // Rensa cache när ny fil väljs för att tvinga nybearbetning
+      clearProcessingCache();
+      
       setFile(selectedFile);
       setError(null);
       setValidationResult(null);
@@ -40,6 +44,9 @@ export function FileUploader({ onDataProcessed, onCancel }) {
     if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
       const droppedFile = event.dataTransfer.files[0];
       if (droppedFile.type === 'text/csv' || droppedFile.name.endsWith('.csv')) {
+        // Rensa cache när ny fil väljs för att tvinga nybearbetning
+        clearProcessingCache();
+        
         setFile(droppedFile);
         setError(null);
         setValidationResult(null);
@@ -55,8 +62,16 @@ export function FileUploader({ onDataProcessed, onCancel }) {
   };
 
   const processCSV = async (content) => {
+    // Förhindra dubbelprocesser
+    if (processingRef.current) {
+      console.log('Bearbetning pågår redan, hoppar över');
+      return;
+    }
+    
     try {
+      processingRef.current = true;
       setIsLoading(true);
+      
       // Bearbeta CSV-data
       const processedData = await processFacebookData(content, columnMappings);
       
@@ -80,6 +95,7 @@ export function FileUploader({ onDataProcessed, onCancel }) {
       setError(`Fel vid bearbetning: ${err.message}`);
     } finally {
       setIsLoading(false);
+      processingRef.current = false;
     }
   };
 

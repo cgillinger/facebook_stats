@@ -4,8 +4,8 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Alert, AlertTitle, AlertDescription } from '../ui/alert';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
-import { Save, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
-import { readColumnMappings, saveColumnMappings, DISPLAY_NAMES, COLUMN_GROUPS } from './columnMappingService';
+import { Save, AlertCircle, CheckCircle2, Loader2, RefreshCw } from 'lucide-react';
+import { readColumnMappings, saveColumnMappings, resetMappingsToDefault, DISPLAY_NAMES, COLUMN_GROUPS } from './columnMappingService';
 
 export function ColumnMappingEditor() {
   const [mappings, setMappings] = useState({});
@@ -13,6 +13,8 @@ export function ColumnMappingEditor() {
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
 
   useEffect(() => {
     loadMappings();
@@ -44,6 +46,7 @@ export function ColumnMappingEditor() {
     try {
       await saveColumnMappings(mappings);
       console.log('ColumnMappingEditor: Sparning lyckades');
+      setSuccessMessage("Ändringarna har sparats.");
       setSuccess(true);
       // Öka tiden till 10 sekunder för bättre synlighet
       setTimeout(() => {
@@ -55,6 +58,35 @@ export function ColumnMappingEditor() {
       setError('Kunde inte spara ändringarna: ' + err.message);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleResetToDefault = async () => {
+    console.log('ColumnMappingEditor: Börjar återställa till standard');
+    setIsResetting(true);
+    setError(null);
+    
+    try {
+      // Använd resetMappingsToDefault-funktionen från columnMappingService
+      await resetMappingsToDefault();
+      
+      // Ladda om mappningarna för att visa standardvärdena
+      const standardMappings = await readColumnMappings();
+      console.log('ColumnMappingEditor: Laddade standardmappningar:', standardMappings);
+      setMappings(standardMappings);
+      
+      // Visa meddelande om framgång
+      setSuccessMessage("Kolumnmappningarna har återställts till standardvärden.");
+      setSuccess(true);
+      setTimeout(() => {
+        console.log('ColumnMappingEditor: Döljer success-meddelande');
+        setSuccess(false);
+      }, 10000);
+    } catch (err) {
+      console.error('ColumnMappingEditor: Fel vid återställning:', err);
+      setError('Kunde inte återställa till standardvärden: ' + err.message);
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -167,10 +199,10 @@ export function ColumnMappingEditor() {
           {success && (
             <Alert className="bg-green-50 border-green-200 animate-in fade-in duration-200">
               <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <AlertTitle className="text-green-800">Ändringar sparade</AlertTitle>
+              <AlertTitle className="text-green-800">Ändringarna sparade</AlertTitle>
               <AlertDescription className="text-green-700">
                 <div className="space-y-2">
-                  <p>Ändringarna har sparats.</p>
+                  <p>{successMessage}</p>
                   <p className="font-semibold">Du måste nu gå tillbaka och läsa in CSV-filen igen för att ändringarna ska börja gälla.</p>
                 </div>
               </AlertDescription>
@@ -200,7 +232,7 @@ export function ColumnMappingEditor() {
                             value={originalName}
                             onChange={(e) => handleValueChange(originalName, e.target.value)}
                             className="max-w-sm"
-                            disabled={isSaving}
+                            disabled={isSaving || isResetting}
                           />
                         </TableCell>
                         <TableCell className="text-muted-foreground">
@@ -214,10 +246,29 @@ export function ColumnMappingEditor() {
             </div>
           ))}
 
-          <div className="flex justify-end">
+          <div className="flex justify-between">
+            <Button 
+              onClick={handleResetToDefault} 
+              disabled={isResetting || isSaving}
+              variant="outline"
+              className="min-w-[170px]"
+            >
+              {isResetting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Återställer...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Återställ till standard
+                </>
+              )}
+            </Button>
+            
             <Button 
               onClick={handleSave} 
-              disabled={isSaving}
+              disabled={isSaving || isResetting}
               className="min-w-[100px]"
             >
               {isSaving ? (
