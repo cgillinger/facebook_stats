@@ -16,7 +16,8 @@ export const ACCOUNT_VIEW_FIELDS = {
   'other_clicks': 'Övriga klick',
   'link_clicks': 'Länkklick',
   'post_count': 'Antal publiceringar',
-  'posts_per_day': 'Publiceringar per dag'
+  'posts_per_day': 'Publiceringar per dag',
+  'page_url': 'Facebook URL'  // Nytt fält för Facebook-sidans URL
 };
 
 // Displaynamn för tillgängliga fält i per-inlägg vyn
@@ -42,6 +43,7 @@ export const METADATA_FIELDS = {
   'publish_time': 'Publiceringstid',
   'post_type': 'Typ',
   'permalink': 'Länk',
+  'page_url': 'Facebook URL'  // Nytt fält
 };
 
 /**
@@ -177,14 +179,20 @@ export const summarizeByAccount = (data, selectedFields) => {
   
   // Räkna ut summerade värden för varje konto
   const summaryData = Object.values(groupedByAccount).map(account => {
+    // Alltid inkludera page_url oavsett valda fält
     const summary = {
       page_id: account.page_id,
-      page_name: account.page_name
+      page_name: account.page_name,
+      page_url: `https://www.facebook.com/${account.page_id}`  // Lägg till Facebook URL för alla konton
     };
     
     // Beräkna summa/genomsnitt för varje valt fält
     selectedFields.forEach(field => {
-      if (field === 'average_reach') {
+      if (field === 'page_url') {
+        // Redan satt ovan, hoppa över
+        return;
+      }
+      else if (field === 'average_reach') {
         // Specialhantering för genomsnittlig räckvidd
         const totalReach = account.posts.reduce((sum, post) => {
           return sum + (post.post_reach || 0);

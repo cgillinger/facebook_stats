@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '../ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { summarizeByAccount, ACCOUNT_VIEW_FIELDS } from '@/utils/dataProcessing';
-import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileDown, FileSpreadsheet, Calculator } from 'lucide-react';
+import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileDown, FileSpreadsheet, Calculator, ExternalLink } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Button } from '../ui/button';
 import { readColumnMappings, formatValue, formatDate } from '../ColumnMappingEditor/columnMappingService';
@@ -87,8 +87,25 @@ const AccountView = ({ data, selectedFields }) => {
     if (columnName === 'page_id') {
       return obj.page_id;
     }
+    if (columnName === 'page_url') {
+      return obj.page_url || `https://www.facebook.com/${obj.page_id}`;
+    }
     
     return obj[columnName];
+  };
+
+  // Funktion för att öppna Facebook-URL
+  const handleOpenFacebookPage = async (url) => {
+    try {
+      if (window.electronAPI?.openExternalLink) {
+        await window.electronAPI.openExternalLink(url);
+      } else {
+        // För webversionen, öppna i ny flik
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    } catch (error) {
+      console.error('Failed to open Facebook page URL:', error);
+    }
   };
 
   const handleSort = (key) => {
@@ -168,12 +185,16 @@ const AccountView = ({ data, selectedFields }) => {
   const formatDataForExport = (data) => {
     return data.map(account => {
       const formattedAccount = {
-        'Sidnamn': getValue(account, 'page_name') || 'Unknown'
+        'Sidnamn': getValue(account, 'page_name') || 'Unknown',
+        'Facebook URL': getValue(account, 'page_url') || '' // Alltid inkludera URL i export
       };
       
       selectedFields.forEach(field => {
-        const displayName = ACCOUNT_VIEW_FIELDS[field] || field;
-        formattedAccount[displayName] = formatValue(getValue(account, field));
+        // Hoppa över page_url eftersom vi redan lagt till den
+        if (field !== 'page_url') {
+          const displayName = ACCOUNT_VIEW_FIELDS[field] || field;
+          formattedAccount[displayName] = formatValue(getValue(account, field));
+        }
       });
       
       return formattedAccount;
@@ -243,6 +264,10 @@ const AccountView = ({ data, selectedFields }) => {
                   </div>
                 </TableHead>
               ))}
+              {/* Facebook Page URL column header - alltid synlig */}
+              <TableHead className="w-12 text-center">
+                Länk
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -262,6 +287,8 @@ const AccountView = ({ data, selectedFields }) => {
                     : ''}
                 </TableCell>
               ))}
+              {/* Tom cell för Facebook URL-kolumnen i totalsummaraden */}
+              <TableCell></TableCell>
             </TableRow>
             
             {/* Data-rader */}
@@ -275,6 +302,17 @@ const AccountView = ({ data, selectedFields }) => {
                     {formatValue(getValue(account, field))}
                   </TableCell>
                 ))}
+                {/* Facebook Page URL - alltid synlig */}
+                <TableCell className="text-center">
+                  <button
+                    onClick={() => handleOpenFacebookPage(getValue(account, 'page_url'))}
+                    className="inline-flex items-center justify-center text-blue-600 hover:text-blue-800"
+                    title="Öppna Facebook-sida"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    <span className="sr-only">Öppna Facebook-sida</span>
+                  </button>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

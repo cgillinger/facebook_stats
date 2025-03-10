@@ -60,12 +60,13 @@ export const DISPLAY_NAMES = {
   'other_clicks': 'Övriga klick',
   'link_clicks': 'Länkklick',
   'post_count': 'Antal publiceringar',
-  'posts_per_day': 'Publiceringar per dag'
+  'posts_per_day': 'Publiceringar per dag',
+  'page_url': 'Facebook URL'  // Nytt fält för Facebook URL
 };
 
 // Gruppera kolumner för bättre översikt
 export const COLUMN_GROUPS = {
-  'Metadata': ['post_id', 'page_id', 'page_name', 'title', 'description', 'publish_time', 'post_type', 'permalink'],
+  'Metadata': ['post_id', 'page_id', 'page_name', 'title', 'description', 'publish_time', 'post_type', 'permalink', 'page_url'],
   'Räckvidd och visningar': ['impressions', 'post_reach', 'average_reach'],
   'Engagemang': ['engagement_total', 'reactions', 'comments', 'shares', 'total_clicks', 'other_clicks', 'link_clicks'],
   'Publiceringsstatistik': ['post_count', 'posts_per_day']

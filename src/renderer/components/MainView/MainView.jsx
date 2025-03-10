@@ -24,6 +24,7 @@ const POST_VIEW_AVAILABLE_FIELDS = {
 };
 
 // Definiera fält som visas i per-konto-vyn för Facebook
+// Tar bort page_url från valbara fält eftersom det nu visas alltid
 const ACCOUNT_VIEW_AVAILABLE_FIELDS = {
   'impressions': 'Sidvisningar',
   'average_reach': 'Genomsnittlig räckvidd',
