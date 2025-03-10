@@ -153,6 +153,51 @@ function daysBetween(startDate, endDate) {
 }
 
 /**
+ * Formaterar ett datum till YYYY-MM-DD-format i lokal tidszon
+ * (istället för att konvertera till UTC som toISOString gör)
+ */
+function formatDateStr(date) {
+  if (!date) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Extraherar datumintervall från data baserat på publiceringstid
+ * @param {Array} data - Array med postdata
+ * @returns {Object|null} Datumintervall med start- och slutdatum som strängar i format YYYY-MM-DD
+ */
+export function getDateRange(data) {
+  if (!Array.isArray(data) || data.length === 0) return null;
+  
+  let earliestDate = null;
+  let latestDate = null;
+  
+  data.forEach(post => {
+    const publishDate = parseDate(post.publish_time);
+    if (publishDate) {
+      if (!earliestDate || publishDate < earliestDate) {
+        earliestDate = publishDate;
+      }
+      if (!latestDate || publishDate > latestDate) {
+        latestDate = publishDate;
+      }
+    }
+  });
+  
+  if (!earliestDate || !latestDate) return null;
+  
+  // Använd formatDateStr som bevarar lokal tidszon
+  // istället för toISOString() som konverterar till UTC först
+  return {
+    start: formatDateStr(earliestDate),
+    end: formatDateStr(latestDate)
+  };
+}
+
+/**
  * Summerar data per konto
  */
 export const summarizeByAccount = (data, selectedFields) => {

@@ -4,11 +4,11 @@ import { Card, CardContent } from '../ui/card';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
 import { Button } from '../ui/button';
-import { Settings } from 'lucide-react';
+import { Settings, Calendar } from 'lucide-react';
 import AccountView from '../AccountView';
 import PostView from '../PostView';
 import { ColumnMappingEditor } from '../ColumnMappingEditor';
-import { ACCOUNT_VIEW_FIELDS, POST_VIEW_FIELDS } from '@/utils/dataProcessing';
+import { ACCOUNT_VIEW_FIELDS, POST_VIEW_FIELDS, getDateRange } from '@/utils/dataProcessing';
 
 // Definiera fält som visas i per-post-vyn för Facebook
 const POST_VIEW_AVAILABLE_FIELDS = {
@@ -39,6 +39,18 @@ const ACCOUNT_VIEW_AVAILABLE_FIELDS = {
   'posts_per_day': 'Publiceringar per dag'
 };
 
+// Komponent för att visa datumintervall
+const DateRangeDisplay = ({ dateRange }) => {
+  if (!dateRange) return null;
+  
+  return (
+    <div className="flex items-center gap-2 py-2 px-4 text-sm text-muted-foreground bg-gray-50 rounded-md border border-gray-100 mt-2 mb-2">
+      <Calendar className="h-4 w-4" />
+      <span>Visar statistik för perioden {dateRange.start} till {dateRange.end}</span>
+    </div>
+  );
+};
+
 const ValueSelector = ({ availableFields, selectedFields, onSelectionChange }) => (
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
     {Object.entries(availableFields).map(([key, label]) => (
@@ -64,11 +76,20 @@ const MainView = ({ data }) => {
   const [selectedFields, setSelectedFields] = useState([]);
   const [activeView, setActiveView] = useState('account');
   const [showColumnMapping, setShowColumnMapping] = useState(false);
+  const [dateRange, setDateRange] = useState(null);
 
   // Återställ valda fält när vyn ändras eller när ny data laddas
   useEffect(() => {
     setSelectedFields([]);
   }, [activeView, data]);
+
+  // Beräkna datumintervall när data ändras
+  useEffect(() => {
+    if (data) {
+      const range = getDateRange(data);
+      setDateRange(range);
+    }
+  }, [data]);
 
   // Hämta rätt fält baserat på aktiv vy
   const getAvailableFields = () => {
@@ -124,6 +145,9 @@ const MainView = ({ data }) => {
               <TabsTrigger value="account">Per konto</TabsTrigger>
               <TabsTrigger value="post">Per post</TabsTrigger>
             </TabsList>
+            
+            {/* Visa datumintervall under flikarna */}
+            <DateRangeDisplay dateRange={dateRange} />
 
             <TabsContent value="account">
               <AccountView data={data} selectedFields={selectedFields} />
