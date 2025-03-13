@@ -205,6 +205,26 @@ export const summarizeByAccount = (data, selectedFields) => {
     return [];
   }
   
+  // Hitta det fullständiga datumintervallet i hela datauppsättningen
+  let globalEarliestDate = null;
+  let globalLatestDate = null;
+  
+  data.forEach(post => {
+    const publishDate = parseDate(post.publish_time);
+    if (publishDate) {
+      if (!globalEarliestDate || publishDate < globalEarliestDate) {
+        globalEarliestDate = publishDate;
+      }
+      if (!globalLatestDate || publishDate > globalLatestDate) {
+        globalLatestDate = publishDate;
+      }
+    }
+  });
+  
+  // Beräkna totalt antal dagar i perioden
+  const totalPeriodDays = daysBetween(globalEarliestDate, globalLatestDate);
+  console.log(`Hela perioden: ${formatDateStr(globalEarliestDate)} till ${formatDateStr(globalLatestDate)} (${totalPeriodDays} dagar)`);
+  
   // Gruppera per konto-ID
   const groupedByAccount = data.reduce((acc, post) => {
     const accountId = post.page_id;
@@ -251,27 +271,13 @@ export const summarizeByAccount = (data, selectedFields) => {
         summary.post_count = account.posts.length;
       }
       else if (field === 'posts_per_day') {
-        // Specialhantering för publiceringar per dag
-        // Hitta tidigaste och senaste publiceringsdatum
-        let earliestDate = null;
-        let latestDate = null;
+        // Uppdaterad beräkning: använd hela CSV-perioden istället för bara aktiv period
+        const postCount = account.posts.length;
         
-        account.posts.forEach(post => {
-          const publishDate = parseDate(post.publish_time);
-          if (publishDate) {
-            if (!earliestDate || publishDate < earliestDate) {
-              earliestDate = publishDate;
-            }
-            if (!latestDate || publishDate > latestDate) {
-              latestDate = publishDate;
-            }
-          }
-        });
-        
-        const dayCount = daysBetween(earliestDate, latestDate);
-        const postsPerDay = dayCount > 0 
-          ? parseFloat((account.posts.length / dayCount).toFixed(2)) 
-          : account.posts.length; // Om alla på samma dag, returnera antalet
+        // Använd hela perioden som finns i CSV:n för beräkningen
+        const postsPerDay = totalPeriodDays > 0 
+          ? parseFloat((postCount / totalPeriodDays).toFixed(2)) 
+          : postCount; // Fallback för konstiga fall
         
         summary.posts_per_day = postsPerDay;
       }
