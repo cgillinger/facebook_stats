@@ -12,6 +12,7 @@ import { ACCOUNT_VIEW_FIELDS, POST_VIEW_FIELDS, getDateRange } from '@/utils/dat
 
 // Definiera fält som visas i per-post-vyn för Facebook
 const POST_VIEW_AVAILABLE_FIELDS = {
+  'post_id': 'Publicerings-ID',  // Lagt till Publicerings-ID som första alternativ
   'post_reach': 'Posträckvidd',
   'impressions': 'Sidvisningar',
   'engagement_total': 'Interaktioner',

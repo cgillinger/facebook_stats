@@ -41,7 +41,7 @@ export const EXCLUDED_COLUMN_NAMES = [
 
 // Beskrivande namn för användargränssnittet
 export const DISPLAY_NAMES = {
-  'post_id': 'Publicerings-id',
+  'post_id': 'Publicerings-ID',  // Ändrat från 'Publicerings-id' till 'Publicerings-ID' för konsekvent namngivning
   'page_id': 'Sid-id',
   'page_name': 'Sidnamn',
   'title': 'Titel',

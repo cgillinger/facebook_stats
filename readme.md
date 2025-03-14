@@ -28,7 +28,7 @@ A web-based application for analyzing and visualizing Facebook post statistics. 
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/facebook-statistics-web.git
+   git clone https://github.com/cgillnger/facebook_stats.git
    cd facebook-statistics-web
    ```
 

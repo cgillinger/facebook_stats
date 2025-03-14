@@ -35,7 +35,7 @@ export const POST_VIEW_FIELDS = {
 
 // Displaynamn för metadata-fält som inte är mätvärden
 export const METADATA_FIELDS = {
-  'post_id': 'Post ID',
+  'post_id': 'Publicerings-ID',  // Ändrat från 'Post ID' till 'Publicerings-ID' för konsekvent namngivning
   'page_id': 'Sid-ID',
   'page_name': 'Sidnamn',
   'title': 'Titel',
