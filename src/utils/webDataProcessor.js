@@ -3,6 +3,7 @@
  * 
  * Webbversion av Facebook databearbetning som använder
  * webbläsarens API:er för att hantera och bearbeta data.
+ * Stöd för att bearbeta flera CSV-filer och hantera stora datamängder.
  */
 import Papa from 'papaparse';
 import { saveProcessedData } from './webStorageService';
@@ -22,6 +23,8 @@ const NON_SUMMARIZABLE_COLUMNS = [
 
 // För att förhindra dubbelprocess med samma CSV
 let processingCache = new Map();
+// Cache för post_id för att förhindra dubletter mellan filer
+let globalPostIdCache = new Set();
 
 // Flagga för att endast logga kolumner en gång per session
 let hasLoggedColumns = false;
@@ -60,6 +63,7 @@ function simpleHash(str) {
   let hash = 0;
   if (str.length === 0) return hash;
   
+  // Använd bara de första 10000 tecknen för snabbhet
   for (let i = 0; i < Math.min(str.length, 10000); i++) {
     const char = str.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
@@ -71,10 +75,12 @@ function simpleHash(str) {
 
 /**
  * Identifierar och hanterar dubletter baserat på Post ID
+ * Kan hantera dubletter både inom en fil och mellan filer
  * @param {Array} data - Rader att kontrollera för dubletter
  * @param {Object} columnMappings - Mapping från originalkolumnnamn till interna namn
+ * @param {boolean} checkGlobalDuplicates - Om true, kontrollerar även mot global post_id cache
  */
-function handleDuplicates(data, columnMappings) {
+function handleDuplicates(data, columnMappings, checkGlobalDuplicates = true) {
   // Skapa en map för att identifiera post_id kolumnen
   const internalToExternal = {};
   Object.entries(columnMappings).forEach(([external, internal]) => {
@@ -96,6 +102,9 @@ function handleDuplicates(data, columnMappings) {
   let duplicateCount = 0;
   const totalRows = data.length;
   
+  // För att spåra nya post IDs
+  const newPostIds = new Set();
+  
   // Identifiera och räkna dubletter
   data.forEach(row => {
     // Hitta post_id i denna rad
@@ -113,11 +122,19 @@ function handleDuplicates(data, columnMappings) {
     if (postId) {
       const postIdStr = String(postId);
       
+      // Kontrollera om det är en dublett i denna datamängd
       if (uniquePosts.has(postIdStr)) {
         duplicateCount++;
         duplicateIds.add(postIdStr);
-      } else {
+      } 
+      // Kontrollera mot den globala cachen om det är aktiverat
+      else if (checkGlobalDuplicates && globalPostIdCache.has(postIdStr)) {
+        duplicateCount++;
+        duplicateIds.add(postIdStr);
+      }
+      else {
         uniquePosts.set(postIdStr, row);
+        newPostIds.add(postIdStr);
       }
     } else {
       // Om ingen post_id finns, använd hela raden som unik nyckel
@@ -130,6 +147,11 @@ function handleDuplicates(data, columnMappings) {
     }
   });
   
+  // Lägg till nya post IDs i den globala cachen
+  if (checkGlobalDuplicates) {
+    newPostIds.forEach(id => globalPostIdCache.add(id));
+  }
+  
   // Konvertera Map till array av unika rader
   const uniqueData = Array.from(uniquePosts.values());
   
@@ -138,7 +160,8 @@ function handleDuplicates(data, columnMappings) {
     stats: {
       totalRows,
       duplicates: duplicateCount,
-      duplicateIds: Array.from(duplicateIds)
+      duplicateIds: Array.from(duplicateIds),
+      uniquePostIds: uniqueData.length
     }
   };
 }
@@ -186,8 +209,11 @@ function mapColumnNames(row, columnMappings) {
 /**
  * Bearbetar CSV-innehåll och returnerar aggregerad data
  * Optimerad för att undvika dubbelprocess och effektivisera bearbetning
+ * @param {string} csvContent - CSV-innehåll att bearbeta
+ * @param {Object} columnMappings - Kolumnmappningar att använda
+ * @param {boolean} checkDuplicatesGlobally - Om true, kontrollerar dubletter mot global cache
  */
-export async function processFacebookData(csvContent, columnMappings) {
+export async function processFacebookData(csvContent, columnMappings, checkDuplicatesGlobally = true) {
   // Skapa en cache-nyckel baserad på innehållet
   const cacheKey = simpleHash(csvContent);
   
@@ -204,6 +230,7 @@ export async function processFacebookData(csvContent, columnMappings) {
       processingQueue.push({
         csvContent,
         columnMappings,
+        checkDuplicatesGlobally,
         resolve,
         reject,
         cacheKey
@@ -223,7 +250,7 @@ export async function processFacebookData(csvContent, columnMappings) {
         header: true,
         dynamicTyping: true,
         skipEmptyLines: true,
-        complete: (results) => {
+        complete: async (results) => {
           if (!results.data || results.data.length === 0) {
             processingInProgress = false;
             reject(new Error('Ingen data hittades i CSV-filen.'));
@@ -236,12 +263,17 @@ export async function processFacebookData(csvContent, columnMappings) {
           });
           
           // Identifiera och filtrera dubletter
-          const { filteredData, stats } = handleDuplicates(results.data, columnMappings);
+          const { filteredData, stats } = handleDuplicates(
+            results.data, 
+            columnMappings, 
+            checkDuplicatesGlobally
+          );
           
           console.log('Dubbletthantering klar:', {
             originalRows: stats.totalRows,
             filteredRows: filteredData.length,
-            duplicatesRemoved: stats.duplicates
+            duplicatesRemoved: stats.duplicates,
+            uniquePostIds: stats.uniquePostIds
           });
           
           let perKonto = {};
@@ -342,32 +374,34 @@ export async function processFacebookData(csvContent, columnMappings) {
             }
           };
           
-          // Spara data via webStorageService
-          saveProcessedData(perKontoArray, perPost)
-            .then(() => {
-              console.log('Bearbetning klar! Data sparad i webbläsaren.');
-              
-              // Cachea resultatet för framtida användning
-              processingCache.set(cacheKey, result);
-              
-              // Återställ flagga och hantera nästa köade bearbetning om den finns
-              processingInProgress = false;
-              
-              if (processingQueue.length > 0) {
-                const nextProcess = processingQueue.shift();
-                console.log('Bearbetar nästa köade förfrågning');
-                processFacebookData(nextProcess.csvContent, nextProcess.columnMappings)
-                  .then(nextProcess.resolve)
-                  .catch(nextProcess.reject);
-              }
-              
-              resolve(result);
-            })
-            .catch((error) => {
-              processingInProgress = false;
-              console.error('Kunde inte spara bearbetad data:', error);
-              reject(error);
-            });
+          try {
+            // Spara data via webStorageService
+            await saveProcessedData(perKontoArray, perPost);
+            console.log('Bearbetning klar! Data sparad i webbläsaren.');
+          } catch (storageError) {
+            console.error('Varning: Kunde inte spara all data i webbläsaren:', storageError);
+            console.log('Fortsätter med bearbetad data i minnet.');
+          }
+          
+          // Cachea resultatet för framtida användning
+          processingCache.set(cacheKey, result);
+          
+          // Återställ flagga och hantera nästa köade bearbetning om den finns
+          processingInProgress = false;
+          
+          if (processingQueue.length > 0) {
+            const nextProcess = processingQueue.shift();
+            console.log('Bearbetar nästa köade förfrågning');
+            processFacebookData(
+              nextProcess.csvContent, 
+              nextProcess.columnMappings,
+              nextProcess.checkDuplicatesGlobally
+            )
+              .then(nextProcess.resolve)
+              .catch(nextProcess.reject);
+          }
+          
+          resolve(result);
         },
         error: (error) => {
           processingInProgress = false;
@@ -393,6 +427,15 @@ export function clearProcessingCache() {
 }
 
 /**
+ * Rensar den globala post ID cachen
+ * Används när man vill börja om från början utan dublettdetektion mellan filer
+ */
+export function resetGlobalPostIdCache() {
+  globalPostIdCache.clear();
+  console.log('Global post ID cache rensad');
+}
+
+/**
  * Returnerar en lista med unika sidnamn från data
  */
 export function getUniquePageNames(data) {
@@ -409,6 +452,48 @@ export function getUniquePageNames(data) {
   });
   
   return Array.from(pageNames).sort();
+}
+
+/**
+ * Extraherar datumintervall från data
+ * @param {Array} data - Data att analysera
+ * @returns {Object|null} - Datumintervall {start, end} eller null
+ */
+export function getDateRange(data) {
+  if (!Array.isArray(data) || data.length === 0) return null;
+  
+  // Samla alla giltiga publiceringsdatum
+  const dates = data
+    .map(item => item.publish_time || item.date)
+    .filter(date => date);
+  
+  if (dates.length === 0) return null;
+  
+  // Hitta tidigaste och senaste datum
+  let earliestDate = new Date(dates[0]);
+  let latestDate = new Date(dates[0]);
+  
+  dates.forEach(date => {
+    const currentDate = new Date(date);
+    if (!isNaN(currentDate.getTime())) {
+      if (currentDate < earliestDate) earliestDate = currentDate;
+      if (currentDate > latestDate) latestDate = currentDate;
+    }
+  });
+  
+  // Formatera datum
+  const formatDate = (date) => {
+    return date.toLocaleDateString('sv-SE', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+  
+  return {
+    start: formatDate(earliestDate),
+    end: formatDate(latestDate)
+  };
 }
 
 /**

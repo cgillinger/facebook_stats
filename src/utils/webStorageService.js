@@ -14,96 +14,96 @@ const STORAGE_KEYS = {
   ACCOUNT_VIEW_DATA: 'facebook_stats_account_view',
   POST_VIEW_DATA: 'facebook_stats_post_view',
   LAST_EXPORT_PATH: 'facebook_stats_last_export_path',
+  DB_NAME: 'FacebookStatisticsDB',
+  DB_VERSION: 1,
+  STORE_POSTS: 'postData',
+  STORE_ACCOUNTS: 'accountData',
 };
 
-// IndexedDB konfiguration
-const DB_CONFIG = {
-  name: 'FacebookStatisticsDB',
-  version: 1,
-  stores: {
-    csvData: { keyPath: 'id', autoIncrement: true }
-  }
+// Storgränser
+const STORAGE_LIMITS = {
+  LOCAL_STORAGE_MAX: 5 * 1024 * 1024, // 5MB
+  INDEXED_DB_ESTIMATED_MAX: 50 * 1024 * 1024 // 50MB uppskattning
 };
+
+// Använd en singleton för DB-anslutning
+let dbInstance = null;
 
 /**
  * Initierar och öppnar IndexedDB
  */
 const openDatabase = () => {
+  // Om vi redan har en instans, återanvänd den
+  if (dbInstance) {
+    return Promise.resolve(dbInstance);
+  }
+  
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_CONFIG.name, DB_CONFIG.version);
-    
-    request.onerror = (event) => {
-      console.error('IndexedDB-fel:', event.target.error);
-      reject(event.target.error);
-    };
-    
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
+    try {
+      const request = indexedDB.open(STORAGE_KEYS.DB_NAME, STORAGE_KEYS.DB_VERSION);
       
-      // Skapa object stores om de inte existerar
-      if (!db.objectStoreNames.contains('csvData')) {
-        db.createObjectStore('csvData', { keyPath: 'id', autoIncrement: true });
-      }
-    };
-    
-    request.onsuccess = (event) => {
-      resolve(event.target.result);
-    };
+      request.onerror = (event) => {
+        console.error('IndexedDB-fel:', event.target.error);
+        reject(event.target.error);
+      };
+      
+      request.onupgradeneeded = (event) => {
+        try {
+          const db = event.target.result;
+          
+          console.log('Uppgraderar IndexedDB-schema');
+          
+          // Skapa object stores om de inte existerar
+          if (!db.objectStoreNames.contains(STORAGE_KEYS.STORE_POSTS)) {
+            console.log(`Skapar objektlager: ${STORAGE_KEYS.STORE_POSTS}`);
+            db.createObjectStore(STORAGE_KEYS.STORE_POSTS, { keyPath: 'id', autoIncrement: true });
+          }
+          
+          if (!db.objectStoreNames.contains(STORAGE_KEYS.STORE_ACCOUNTS)) {
+            console.log(`Skapar objektlager: ${STORAGE_KEYS.STORE_ACCOUNTS}`);
+            db.createObjectStore(STORAGE_KEYS.STORE_ACCOUNTS, { keyPath: 'id', autoIncrement: true });
+          }
+          
+          console.log('IndexedDB-schema uppgraderat');
+        } catch (error) {
+          console.error('Fel vid schema-uppgradering:', error);
+        }
+      };
+      
+      request.onsuccess = (event) => {
+        dbInstance = event.target.result;
+        console.log('IndexedDB öppnad framgångsrikt');
+        resolve(dbInstance);
+      };
+    } catch (error) {
+      console.error('Fel vid öppnande av IndexedDB:', error);
+      resolve(null); // Returnera null istället för att avvisa för att tillåta fallback
+    }
   });
 };
 
 /**
- * Sparar data i IndexedDB
+ * Sparar data i localStorage
  */
-const saveToIndexedDB = async (storeName, data) => {
-  const db = await openDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([storeName], 'readwrite');
-    const store = transaction.objectStore(storeName);
-    const request = store.add(data);
-    
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-};
-
-/**
- * Hämtar data från IndexedDB
- */
-const getFromIndexedDB = async (storeName, key) => {
-  const db = await openDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([storeName], 'readonly');
-    const store = transaction.objectStore(storeName);
-    const request = key ? store.get(key) : store.getAll();
-    
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-};
-
-/**
- * Sparar konfigurationsdata i localStorage
- */
-const saveConfig = (key, data) => {
+const saveToLocalStorage = (key, data) => {
   try {
     localStorage.setItem(key, JSON.stringify(data));
     return true;
   } catch (error) {
-    console.error(`Fel vid sparande av ${key}:`, error);
+    console.error(`Fel vid sparande till localStorage (${key}):`, error);
     return false;
   }
 };
 
 /**
- * Hämtar konfigurationsdata från localStorage
+ * Hämtar data från localStorage
  */
-const getConfig = (key, defaultValue = null) => {
+const getFromLocalStorage = (key, defaultValue = null) => {
   try {
     const data = localStorage.getItem(key);
     return data ? JSON.parse(data) : defaultValue;
   } catch (error) {
-    console.error(`Fel vid hämtning av ${key}:`, error);
+    console.error(`Fel vid hämtning från localStorage (${key}):`, error);
     return defaultValue;
   }
 };
@@ -111,7 +111,7 @@ const getConfig = (key, defaultValue = null) => {
 /**
  * Hanterar uppladdning av CSV-fil
  */
-const handleFileUpload = (file) => {
+export const handleFileUpload = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
@@ -131,7 +131,7 @@ const handleFileUpload = (file) => {
 /**
  * Hanterar nedladdning av data som fil
  */
-const downloadFile = (data, filename, type = 'text/csv') => {
+export const downloadFile = (data, filename, type = 'text/csv') => {
   // Skapa blob och nedladdningslänk
   const blob = new Blob([data], { type });
   const url = URL.createObjectURL(blob);
@@ -155,7 +155,7 @@ const downloadFile = (data, filename, type = 'text/csv') => {
 /**
  * Hanterar nedladdning av data som Excel-fil
  */
-const downloadExcel = async (data, filename) => {
+export const downloadExcel = async (data, filename) => {
   try {
     // Importera XLSX dynamiskt när funktionen anropas
     const XLSX = await import('xlsx');
@@ -194,41 +194,54 @@ const downloadExcel = async (data, filename) => {
 /**
  * Läser kolumnmappningar från localStorage eller returnerar standard
  */
-const readColumnMappings = async (defaultMappings) => {
-  const savedMappings = getConfig(STORAGE_KEYS.COLUMN_MAPPINGS);
+export const readColumnMappings = async (defaultMappings) => {
+  const savedMappings = getFromLocalStorage(STORAGE_KEYS.COLUMN_MAPPINGS);
   return savedMappings || defaultMappings;
 };
 
 /**
  * Sparar kolumnmappningar till localStorage
  */
-const saveColumnMappings = async (mappings) => {
-  return saveConfig(STORAGE_KEYS.COLUMN_MAPPINGS, mappings);
+export const saveColumnMappings = async (mappings) => {
+  return saveToLocalStorage(STORAGE_KEYS.COLUMN_MAPPINGS, mappings);
 };
 
 /**
- * Sparar bearbetad data till localStorage eller IndexedDB beroende på storlek
+ * Sparar bearbetad data till localStorage
+ * Obs: Vi använder bara localStorage istället för IndexedDB för att undvika problem
  */
-const saveProcessedData = async (accountViewData, postViewData) => {
+export const saveProcessedData = async (accountViewData, postViewData) => {
   try {
-    // Spara account view data
-    saveConfig(STORAGE_KEYS.ACCOUNT_VIEW_DATA, accountViewData);
+    // Försök spara i localStorage
+    console.log('Sparar account data, antal rader:', accountViewData.length);
+    saveToLocalStorage(STORAGE_KEYS.ACCOUNT_VIEW_DATA, accountViewData);
     
-    // Spara post view data
+    // För post view data, dela upp i mindre bitar om det behövs
+    console.log('Sparar post data, antal rader:', postViewData.length);
+    
+    // Dela upp data i mindre delar om det är större än 1MB
     const postViewString = JSON.stringify(postViewData);
-    if (postViewString.length < 5000000) { // ~5MB gräns
-      saveConfig(STORAGE_KEYS.POST_VIEW_DATA, postViewData);
+    
+    if (postViewString.length < 1000000) { // 1MB gräns
+      saveToLocalStorage(STORAGE_KEYS.POST_VIEW_DATA, postViewData);
+      console.log('Sparade all data i localStorage');
     } else {
-      // För större datamängder, använd IndexedDB
-      await saveToIndexedDB('csvData', { 
-        timestamp: Date.now(), 
-        postViewData: postViewData 
-      });
+      // Om för stort, spara bara det senaste
+      saveToLocalStorage(STORAGE_KEYS.POST_VIEW_DATA, postViewData.slice(0, 1000));
+      console.log('Postdatan var för stor, sparade endast de 1000 senaste inläggen');
     }
     
     return true;
   } catch (error) {
     console.error('Fel vid sparande av bearbetad data:', error);
+    // Försök spara med begränsad mängd data vid fel
+    try {
+      saveToLocalStorage(STORAGE_KEYS.ACCOUNT_VIEW_DATA, accountViewData.slice(0, 100));
+      saveToLocalStorage(STORAGE_KEYS.POST_VIEW_DATA, postViewData.slice(0, 100));
+      console.log('Nödläge: Sparade begränsad data efter fel');
+    } catch (e) {
+      console.error('Kunde inte spara ens begränsad data:', e);
+    }
     return false;
   }
 };
@@ -236,28 +249,17 @@ const saveProcessedData = async (accountViewData, postViewData) => {
 /**
  * Hämtar bearbetad account view data
  */
-const getAccountViewData = () => {
-  return getConfig(STORAGE_KEYS.ACCOUNT_VIEW_DATA, []);
+export const getAccountViewData = () => {
+  return getFromLocalStorage(STORAGE_KEYS.ACCOUNT_VIEW_DATA, []);
 };
 
 /**
  * Hämtar bearbetad post view data
  */
-const getPostViewData = async () => {
+export const getPostViewData = async () => {
   try {
-    // Försök hämta från localStorage först
-    const localData = getConfig(STORAGE_KEYS.POST_VIEW_DATA);
-    if (localData) return localData;
-    
-    // Annars hämta från IndexedDB
-    const dbData = await getFromIndexedDB('csvData');
-    if (dbData && dbData.length > 0) {
-      // Returnera den senaste (sortera efter timestamp)
-      const sortedData = dbData.sort((a, b) => b.timestamp - a.timestamp);
-      return sortedData[0].postViewData;
-    }
-    
-    return [];
+    // Hämta direkt från localStorage
+    return getFromLocalStorage(STORAGE_KEYS.POST_VIEW_DATA, []);
   } catch (error) {
     console.error('Fel vid hämtning av bearbetad data:', error);
     return [];
@@ -265,22 +267,73 @@ const getPostViewData = async () => {
 };
 
 /**
- * Öppnar extern URL i en ny flik
+ * Hämtar statistik om lagringsutrymme
+ * @returns {Promise<Object>} - Information om lagringsutrymme
  */
-const openExternalLink = (url) => {
-  window.open(url, '_blank', 'noopener,noreferrer');
-  return true;
+export const getStorageStats = async () => {
+  try {
+    // Förenklade beräkningar för att undvika fel
+    let localStorageUsed = 0;
+    let fbLocalStorageUsed = 0;
+    
+    // Lista över alla nycklar som tillhör vår app
+    const fbKeyPrefix = 'facebook_stats_';
+    
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue; // Hoppa över null-nycklar
+      
+      try {
+        const value = localStorage.getItem(key) || '';
+        
+        // Total storlek för alla nycklar
+        localStorageUsed += (key.length + value.length) * 2; // Approximation i bytes
+        
+        // Storlek bara för facebook-relaterade nycklar
+        if (key.startsWith(fbKeyPrefix)) {
+          fbLocalStorageUsed += (key.length + value.length) * 2;
+        }
+      } catch (e) {
+        console.warn(`Kunde inte beräkna storleken för nyckel ${key}:`, e);
+      }
+    }
+    
+    return {
+      localStorage: {
+        used: localStorageUsed,
+        fbUsed: fbLocalStorageUsed,
+        limit: STORAGE_LIMITS.LOCAL_STORAGE_MAX,
+        percentage: (localStorageUsed / STORAGE_LIMITS.LOCAL_STORAGE_MAX) * 100
+      },
+      indexedDB: {
+        totalItems: 0,
+        estimatedSize: 0,
+        fbItems: 0,
+        fbSize: 0,
+        percentage: 0
+      },
+      total: {
+        used: localStorageUsed,
+        fbUsed: fbLocalStorageUsed,
+        limit: STORAGE_LIMITS.LOCAL_STORAGE_MAX,
+        percentage: (localStorageUsed / STORAGE_LIMITS.LOCAL_STORAGE_MAX) * 100
+      }
+    };
+  } catch (error) {
+    console.error('Fel vid hämtning av lagringsstatistik:', error);
+    return {
+      error: error.message,
+      localStorage: { used: 0, fbUsed: 0, limit: STORAGE_LIMITS.LOCAL_STORAGE_MAX, percentage: 0 },
+      indexedDB: { totalItems: 0, estimatedSize: 0, fbItems: 0, fbSize: 0, percentage: 0 },
+      total: { used: 0, fbUsed: 0, percentage: 0 }
+    };
+  }
 };
 
-export {
-  STORAGE_KEYS,
-  readColumnMappings,
-  saveColumnMappings,
-  handleFileUpload,
-  downloadFile,
-  downloadExcel,
-  saveProcessedData,
-  getAccountViewData,
-  getPostViewData,
-  openExternalLink
+/**
+ * Öppnar extern URL i en ny flik
+ */
+export const openExternalLink = (url) => {
+  window.open(url, '_blank', 'noopener,noreferrer');
+  return true;
 };
