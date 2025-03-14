@@ -285,7 +285,7 @@ export function FileUploader({ onDataProcessed, onCancel, isAddingFile = false, 
                     : 'Släpp CSV-fil här eller klicka för att bläddra'}
                 </h3>
                 <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-                  Ladda upp en CSV-fil med Facebook-statistik. Notera att du bara kan ladda upp en i taget. Denna data behandlas endast i din webbläsare och skickas inte till någon server.
+                  Ladda upp en eller flera CSV-filer med Facebook-statistik. Denna data behandlas endast i din webbläsare och skickas inte till någon server.
                 </p>
                 
                 {files.length > 0 && (
