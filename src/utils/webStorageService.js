@@ -6,6 +6,7 @@
  * - IndexedDB för större datauppsättningar
  * - Web File API för filhantering
  */
+import { calculateMemoryUsage } from './memoryUtils';
 
 // Konstanter
 const STORAGE_KEYS = {
@@ -14,96 +15,333 @@ const STORAGE_KEYS = {
   ACCOUNT_VIEW_DATA: 'facebook_stats_account_view',
   POST_VIEW_DATA: 'facebook_stats_post_view',
   LAST_EXPORT_PATH: 'facebook_stats_last_export_path',
-  DB_NAME: 'FacebookStatisticsDB',
-  DB_VERSION: 1,
-  STORE_POSTS: 'postData',
-  STORE_ACCOUNTS: 'accountData',
+  UPLOADED_FILES_METADATA: 'facebook_stats_uploaded_files',
+  MEMORY_USAGE: 'facebook_stats_memory_usage',
 };
 
-// Storgränser
-const STORAGE_LIMITS = {
-  LOCAL_STORAGE_MAX: 5 * 1024 * 1024, // 5MB
-  INDEXED_DB_ESTIMATED_MAX: 50 * 1024 * 1024 // 50MB uppskattning
+// IndexedDB konfiguration
+const DB_CONFIG = {
+  name: 'FacebookStatisticsDB',
+  version: 1,
+  stores: {
+    csvData: { keyPath: 'id', autoIncrement: true },
+    fileMetadata: { keyPath: 'id', autoIncrement: true }
+  }
 };
-
-// Använd en singleton för DB-anslutning
-let dbInstance = null;
 
 /**
  * Initierar och öppnar IndexedDB
  */
 const openDatabase = () => {
-  // Om vi redan har en instans, återanvänd den
-  if (dbInstance) {
-    return Promise.resolve(dbInstance);
-  }
-  
   return new Promise((resolve, reject) => {
-    try {
-      const request = indexedDB.open(STORAGE_KEYS.DB_NAME, STORAGE_KEYS.DB_VERSION);
+    const request = indexedDB.open(DB_CONFIG.name, DB_CONFIG.version);
+    
+    request.onerror = (event) => {
+      console.error('IndexedDB-fel:', event.target.error);
+      reject(event.target.error);
+    };
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
       
-      request.onerror = (event) => {
-        console.error('IndexedDB-fel:', event.target.error);
-        reject(event.target.error);
-      };
+      // Skapa object stores om de inte existerar
+      if (!db.objectStoreNames.contains('csvData')) {
+        db.createObjectStore('csvData', { keyPath: 'id', autoIncrement: true });
+        console.log('Created csvData object store');
+      }
       
-      request.onupgradeneeded = (event) => {
-        try {
-          const db = event.target.result;
-          
-          console.log('Uppgraderar IndexedDB-schema');
-          
-          // Skapa object stores om de inte existerar
-          if (!db.objectStoreNames.contains(STORAGE_KEYS.STORE_POSTS)) {
-            console.log(`Skapar objektlager: ${STORAGE_KEYS.STORE_POSTS}`);
-            db.createObjectStore(STORAGE_KEYS.STORE_POSTS, { keyPath: 'id', autoIncrement: true });
-          }
-          
-          if (!db.objectStoreNames.contains(STORAGE_KEYS.STORE_ACCOUNTS)) {
-            console.log(`Skapar objektlager: ${STORAGE_KEYS.STORE_ACCOUNTS}`);
-            db.createObjectStore(STORAGE_KEYS.STORE_ACCOUNTS, { keyPath: 'id', autoIncrement: true });
-          }
-          
-          console.log('IndexedDB-schema uppgraderat');
-        } catch (error) {
-          console.error('Fel vid schema-uppgradering:', error);
-        }
-      };
+      // Lägg till store för filmetadata om den inte finns
+      if (!db.objectStoreNames.contains('fileMetadata')) {
+        db.createObjectStore('fileMetadata', { keyPath: 'id', autoIncrement: true });
+        console.log('Created fileMetadata object store');
+      }
+    };
+    
+    request.onsuccess = (event) => {
+      const db = event.target.result;
       
-      request.onsuccess = (event) => {
-        dbInstance = event.target.result;
-        console.log('IndexedDB öppnad framgångsrikt');
-        resolve(dbInstance);
-      };
-    } catch (error) {
-      console.error('Fel vid öppnande av IndexedDB:', error);
-      resolve(null); // Returnera null istället för att avvisa för att tillåta fallback
-    }
+      // Validera att object stores verkligen existerar
+      if (!db.objectStoreNames.contains('csvData') || !db.objectStoreNames.contains('fileMetadata')) {
+        console.error('Required object stores missing. Deleting database and recreating...');
+        
+        // Stäng den aktuella databasen
+        db.close();
+        
+        // Ta bort databasen och skapa om den
+        const deleteRequest = indexedDB.deleteDatabase(DB_CONFIG.name);
+        
+        deleteRequest.onsuccess = () => {
+          console.log('Database deleted successfully. Reopening...');
+          // Försök öppna igen rekursivt, men begränsa för att undvika oändlig loop
+          resolve(openDatabase());
+        };
+        
+        deleteRequest.onerror = (err) => {
+          console.error('Failed to delete database:', err);
+          reject(new Error('Failed to recreate database'));
+        };
+      } else {
+        resolve(db);
+      }
+    };
   });
 };
 
 /**
- * Sparar data i localStorage
+ * Sparar data i IndexedDB
  */
-const saveToLocalStorage = (key, data) => {
+const saveToIndexedDB = async (storeName, data) => {
   try {
-    localStorage.setItem(key, JSON.stringify(data));
+    const db = await openDatabase();
+    
+    return new Promise((resolve, reject) => {
+      try {
+        const transaction = db.transaction([storeName], 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.add(data);
+        
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = (err) => {
+          console.error('Error saving to IndexedDB:', err);
+          reject(err);
+        };
+        
+        // Lyssna även på transaktionsfel
+        transaction.onerror = (err) => {
+          console.error('Transaction error:', err);
+          reject(err);
+        };
+      } catch (err) {
+        console.error('Error creating transaction:', err);
+        reject(err);
+      }
+    });
+  } catch (err) {
+    console.error('Error opening database:', err);
+    throw err;
+  }
+};
+
+/**
+ * Uppdaterar data i IndexedDB
+ */
+const updateInIndexedDB = async (storeName, id, data) => {
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([storeName], 'readwrite');
+    const store = transaction.objectStore(storeName);
+    
+    // Hämta befintlig post först
+    const getRequest = store.get(id);
+    
+    getRequest.onsuccess = () => {
+      const existingData = getRequest.result;
+      if (!existingData) {
+        reject(new Error(`Post med ID ${id} hittades inte`));
+        return;
+      }
+      
+      // Sammanfoga befintlig data med ny data
+      const updatedData = { ...existingData, ...data };
+      
+      // Spara den uppdaterade posten
+      const updateRequest = store.put(updatedData);
+      updateRequest.onsuccess = () => resolve(updateRequest.result);
+      updateRequest.onerror = (err) => reject(err);
+    };
+    
+    getRequest.onerror = (err) => reject(err);
+    
+    // Lyssna även på transaktionsfel
+    transaction.onerror = (err) => {
+      console.error('Transaction error in update:', err);
+      reject(err);
+    };
+  });
+};
+
+/**
+ * Tar bort data från IndexedDB
+ */
+const deleteFromIndexedDB = async (storeName, id) => {
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([storeName], 'readwrite');
+    const store = transaction.objectStore(storeName);
+    const request = store.delete(id);
+    
+    request.onsuccess = () => resolve(true);
+    request.onerror = (err) => reject(err);
+    
+    // Lyssna även på transaktionsfel
+    transaction.onerror = (err) => {
+      console.error('Transaction error in delete:', err);
+      reject(err);
+    };
+  });
+};
+
+/**
+ * Rensar alla data från en specifik store i IndexedDB
+ */
+const clearStoreInIndexedDB = async (storeName) => {
+  try {
+    const db = await openDatabase();
+    return new Promise((resolve, reject) => {
+      try {
+        const transaction = db.transaction([storeName], 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.clear();
+        
+        request.onsuccess = () => resolve(true);
+        request.onerror = (err) => {
+          console.error('Error clearing store:', err);
+          reject(err);
+        };
+        
+        // Lyssna även på transaktionsfel
+        transaction.onerror = (err) => {
+          console.error('Transaction error in clear:', err);
+          reject(err);
+        };
+      } catch (err) {
+        console.error('Error creating transaction for clear:', err);
+        reject(err);
+      }
+    });
+  } catch (err) {
+    console.error('Error opening database for clear:', err);
+    throw err;
+  }
+};
+
+/**
+ * Hämtar data från IndexedDB
+ */
+const getFromIndexedDB = async (storeName, key) => {
+  try {
+    const db = await openDatabase();
+    return new Promise((resolve, reject) => {
+      try {
+        const transaction = db.transaction([storeName], 'readonly');
+        const store = transaction.objectStore(storeName);
+        const request = key ? store.get(key) : store.getAll();
+        
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = (err) => {
+          console.error('Error getting from IndexedDB:', err);
+          reject(err);
+        };
+        
+        // Lyssna även på transaktionsfel
+        transaction.onerror = (err) => {
+          console.error('Transaction error in get:', err);
+          reject(err);
+        };
+      } catch (err) {
+        console.error('Error creating transaction for get:', err);
+        reject(err);
+      }
+    });
+  } catch (err) {
+    console.error('Error opening database for get:', err);
+    throw err;
+  }
+};
+
+/**
+ * Sparar konfigurationsdata i localStorage
+ */
+const saveConfig = (key, data) => {
+  try {
+    // Hantera stora objekt med chunking-metod
+    const jsonData = JSON.stringify(data);
+    
+    // Om data är mindre än 2MB, spara direkt
+    if (jsonData.length < 2 * 1024 * 1024) {
+      localStorage.setItem(key, jsonData);
+      return true;
+    } 
+    
+    // För större data, försök med chunking
+    console.warn(`Large data for ${key}, attempting chunking`);
+    const chunkSize = 500 * 1024; // 500KB per chunk
+    const chunks = Math.ceil(jsonData.length / chunkSize);
+    
+    // Rensa eventuella befintliga chunks
+    for (let i = 0; i < localStorage.length; i++) {
+      const existingKey = localStorage.key(i);
+      if (existingKey.startsWith(`${key}_chunk_`)) {
+        localStorage.removeItem(existingKey);
+      }
+    }
+    
+    // Spara meta-information
+    localStorage.setItem(`${key}_meta`, JSON.stringify({ chunks, totalSize: jsonData.length }));
+    
+    // Spara data i chunks
+    for (let i = 0; i < chunks; i++) {
+      const start = i * chunkSize;
+      const end = Math.min(start + chunkSize, jsonData.length);
+      const chunk = jsonData.substring(start, end);
+      localStorage.setItem(`${key}_chunk_${i}`, chunk);
+    }
+    
     return true;
   } catch (error) {
-    console.error(`Fel vid sparande till localStorage (${key}):`, error);
+    console.error(`Fel vid sparande av ${key}:`, error);
+    
+    // Om lagringsutrymmet är slut, rensa och försök med IndexedDB istället
+    if (error.name === 'QuotaExceededError') {
+      console.warn('Storage quota exceeded, clearing old data');
+      // Rensa icke-kritiska data
+      localStorage.removeItem(STORAGE_KEYS.POST_VIEW_DATA);
+      localStorage.removeItem(`${STORAGE_KEYS.POST_VIEW_DATA}_meta`);
+      
+      // Rensa alla chunk-data för POST_VIEW_DATA
+      for (let i = 0; i < localStorage.length; i++) {
+        const existingKey = localStorage.key(i);
+        if (existingKey.startsWith(`${STORAGE_KEYS.POST_VIEW_DATA}_chunk_`)) {
+          localStorage.removeItem(existingKey);
+        }
+      }
+    }
+    
     return false;
   }
 };
 
 /**
- * Hämtar data från localStorage
+ * Hämtar konfigurationsdata från localStorage
  */
-const getFromLocalStorage = (key, defaultValue = null) => {
+const getConfig = (key, defaultValue = null) => {
   try {
+    // Kontrollera om data är sparad som chunks
+    const metaStr = localStorage.getItem(`${key}_meta`);
+    
+    if (metaStr) {
+      // Data finns som chunks, samla ihop dem
+      const meta = JSON.parse(metaStr);
+      let fullData = '';
+      
+      for (let i = 0; i < meta.chunks; i++) {
+        const chunk = localStorage.getItem(`${key}_chunk_${i}`);
+        if (chunk) {
+          fullData += chunk;
+        } else {
+          console.error(`Chunk ${i} missing for ${key}`);
+          return defaultValue;
+        }
+      }
+      
+      return JSON.parse(fullData);
+    }
+    
+    // Normal data retrieval
     const data = localStorage.getItem(key);
     return data ? JSON.parse(data) : defaultValue;
   } catch (error) {
-    console.error(`Fel vid hämtning från localStorage (${key}):`, error);
+    console.error(`Fel vid hämtning av ${key}:`, error);
     return defaultValue;
   }
 };
@@ -111,7 +349,7 @@ const getFromLocalStorage = (key, defaultValue = null) => {
 /**
  * Hanterar uppladdning av CSV-fil
  */
-export const handleFileUpload = (file) => {
+const handleFileUpload = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
@@ -131,7 +369,7 @@ export const handleFileUpload = (file) => {
 /**
  * Hanterar nedladdning av data som fil
  */
-export const downloadFile = (data, filename, type = 'text/csv') => {
+const downloadFile = (data, filename, type = 'text/csv') => {
   // Skapa blob och nedladdningslänk
   const blob = new Blob([data], { type });
   const url = URL.createObjectURL(blob);
@@ -155,7 +393,7 @@ export const downloadFile = (data, filename, type = 'text/csv') => {
 /**
  * Hanterar nedladdning av data som Excel-fil
  */
-export const downloadExcel = async (data, filename) => {
+const downloadExcel = async (data, filename) => {
   try {
     // Importera XLSX dynamiskt när funktionen anropas
     const XLSX = await import('xlsx');
@@ -194,54 +432,198 @@ export const downloadExcel = async (data, filename) => {
 /**
  * Läser kolumnmappningar från localStorage eller returnerar standard
  */
-export const readColumnMappings = async (defaultMappings) => {
-  const savedMappings = getFromLocalStorage(STORAGE_KEYS.COLUMN_MAPPINGS);
+const readColumnMappings = async (defaultMappings) => {
+  const savedMappings = getConfig(STORAGE_KEYS.COLUMN_MAPPINGS);
   return savedMappings || defaultMappings;
 };
 
 /**
  * Sparar kolumnmappningar till localStorage
  */
-export const saveColumnMappings = async (mappings) => {
-  return saveToLocalStorage(STORAGE_KEYS.COLUMN_MAPPINGS, mappings);
+const saveColumnMappings = async (mappings) => {
+  return saveConfig(STORAGE_KEYS.COLUMN_MAPPINGS, mappings);
 };
 
 /**
- * Sparar bearbetad data till localStorage
- * Obs: Vi använder bara localStorage istället för IndexedDB för att undvika problem
+ * Sparar bearbetad data till localStorage eller IndexedDB beroende på storlek
  */
-export const saveProcessedData = async (accountViewData, postViewData) => {
+const saveProcessedData = async (accountViewData, postViewData, fileInfo = null) => {
   try {
-    // Försök spara i localStorage
-    console.log('Sparar account data, antal rader:', accountViewData.length);
-    saveToLocalStorage(STORAGE_KEYS.ACCOUNT_VIEW_DATA, accountViewData);
+    // Spara account view data
+    saveConfig(STORAGE_KEYS.ACCOUNT_VIEW_DATA, accountViewData);
     
-    // För post view data, dela upp i mindre bitar om det behövs
-    console.log('Sparar post data, antal rader:', postViewData.length);
-    
-    // Dela upp data i mindre delar om det är större än 1MB
+    // Spara post view data
     const postViewString = JSON.stringify(postViewData);
-    
-    if (postViewString.length < 1000000) { // 1MB gräns
-      saveToLocalStorage(STORAGE_KEYS.POST_VIEW_DATA, postViewData);
-      console.log('Sparade all data i localStorage');
+    if (postViewString.length < 1500000) { // ~1.5MB gräns, sänkt från 5MB
+      saveConfig(STORAGE_KEYS.POST_VIEW_DATA, postViewData);
     } else {
-      // Om för stort, spara bara det senaste
-      saveToLocalStorage(STORAGE_KEYS.POST_VIEW_DATA, postViewData.slice(0, 1000));
-      console.log('Postdatan var för stor, sparade endast de 1000 senaste inläggen');
+      // För större datamängder, använd IndexedDB
+      console.log('Data too large for localStorage, using IndexedDB');
+      await saveToIndexedDB('csvData', { 
+        timestamp: Date.now(), 
+        postViewData: postViewData 
+      });
     }
+    
+    // Om filinformation tillhandahålls, spara metadata om uppladdad fil
+    if (fileInfo) {
+      await addFileMetadata(fileInfo);
+    }
+    
+    // Uppdatera minnesanvändningsstatistik
+    await updateMemoryUsageStats();
     
     return true;
   } catch (error) {
     console.error('Fel vid sparande av bearbetad data:', error);
-    // Försök spara med begränsad mängd data vid fel
-    try {
-      saveToLocalStorage(STORAGE_KEYS.ACCOUNT_VIEW_DATA, accountViewData.slice(0, 100));
-      saveToLocalStorage(STORAGE_KEYS.POST_VIEW_DATA, postViewData.slice(0, 100));
-      console.log('Nödläge: Sparade begränsad data efter fel');
-    } catch (e) {
-      console.error('Kunde inte spara ens begränsad data:', e);
+    return false;
+  }
+};
+
+/**
+ * Sparar metadata om uppladdad fil
+ */
+const addFileMetadata = async (fileInfo) => {
+  try {
+    // Hämta befintlig filmetadata
+    const existingFiles = await getUploadedFilesMetadata();
+    
+    // Lägg till den nya filen
+    const updatedFiles = [...existingFiles, {
+      ...fileInfo,
+      uploadedAt: new Date().toISOString()
+    }];
+    
+    // Spara uppdaterad lista
+    saveConfig(STORAGE_KEYS.UPLOADED_FILES_METADATA, updatedFiles);
+    
+    return true;
+  } catch (error) {
+    console.error('Fel vid sparande av filmetadata:', error);
+    return false;
+  }
+};
+
+/**
+ * Hämtar metadata om uppladdade filer
+ */
+const getUploadedFilesMetadata = async () => {
+  return getConfig(STORAGE_KEYS.UPLOADED_FILES_METADATA, []);
+};
+
+/**
+ * Tar bort en uppladdad fil från metadata
+ */
+const removeFileMetadata = async (fileIndex) => {
+  try {
+    // Hämta befintlig filmetadata
+    const existingFiles = await getUploadedFilesMetadata();
+    
+    // Ta bort filen med angivet index
+    if (fileIndex >= 0 && fileIndex < existingFiles.length) {
+      existingFiles.splice(fileIndex, 1);
+      
+      // Spara uppdaterad lista
+      saveConfig(STORAGE_KEYS.UPLOADED_FILES_METADATA, existingFiles);
+      return true;
     }
+    
+    return false;
+  } catch (error) {
+    console.error('Fel vid borttagning av filmetadata:', error);
+    return false;
+  }
+};
+
+/**
+ * Rensar all filmetadata
+ */
+const clearFileMetadata = async () => {
+  try {
+    saveConfig(STORAGE_KEYS.UPLOADED_FILES_METADATA, []);
+    return true;
+  } catch (error) {
+    console.error('Fel vid rensning av filmetadata:', error);
+    return false;
+  }
+};
+
+/**
+ * Uppdaterar minnesanvändningsstatistik
+ */
+const updateMemoryUsageStats = async () => {
+  try {
+    const accountViewData = await getAccountViewData();
+    const postViewData = await getPostViewData();
+    const fileMetadata = await getUploadedFilesMetadata();
+    
+    const memoryUsage = calculateMemoryUsage(fileMetadata, postViewData, accountViewData);
+    saveConfig(STORAGE_KEYS.MEMORY_USAGE, memoryUsage);
+    
+    return memoryUsage;
+  } catch (error) {
+    console.error('Fel vid uppdatering av minnesstatistik:', error);
+    return null;
+  }
+};
+
+/**
+ * Hämtar aktuell minnesanvändningsstatistik
+ */
+const getMemoryUsageStats = async () => {
+  try {
+    // Försök hämta befintlig statistik
+    const savedStats = getConfig(STORAGE_KEYS.MEMORY_USAGE);
+    
+    // Om ingen statistik finns, beräkna den
+    if (!savedStats) {
+      return await updateMemoryUsageStats();
+    }
+    
+    return savedStats;
+  } catch (error) {
+    console.error('Fel vid hämtning av minnesstatistik:', error);
+    return null;
+  }
+};
+
+/**
+ * Rensar all data från lagringen
+ */
+const clearAllData = async () => {
+  try {
+    // Rensa localStorage
+    localStorage.removeItem(STORAGE_KEYS.POST_VIEW_DATA);
+    localStorage.removeItem(STORAGE_KEYS.ACCOUNT_VIEW_DATA);
+    localStorage.removeItem(STORAGE_KEYS.UPLOADED_FILES_METADATA);
+    localStorage.removeItem(STORAGE_KEYS.MEMORY_USAGE);
+    
+    // Rensa alla chunks
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key.includes('_chunk_') || key.includes('_meta')) {
+        localStorage.removeItem(key);
+      }
+    }
+    
+    // Rensa IndexedDB
+    try {
+      await clearStoreInIndexedDB('csvData');
+    } catch (dbError) {
+      console.warn('Fel vid rensning av csvData:', dbError);
+      // Fortsätt ändå
+    }
+    
+    try {
+      await clearStoreInIndexedDB('fileMetadata');
+    } catch (dbError) {
+      console.warn('Fel vid rensning av fileMetadata:', dbError);
+      // Fortsätt ändå
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Fel vid rensning av all data:', error);
     return false;
   }
 };
@@ -249,17 +631,33 @@ export const saveProcessedData = async (accountViewData, postViewData) => {
 /**
  * Hämtar bearbetad account view data
  */
-export const getAccountViewData = () => {
-  return getFromLocalStorage(STORAGE_KEYS.ACCOUNT_VIEW_DATA, []);
+const getAccountViewData = () => {
+  return getConfig(STORAGE_KEYS.ACCOUNT_VIEW_DATA, []);
 };
 
 /**
  * Hämtar bearbetad post view data
  */
-export const getPostViewData = async () => {
+const getPostViewData = async () => {
   try {
-    // Hämta direkt från localStorage
-    return getFromLocalStorage(STORAGE_KEYS.POST_VIEW_DATA, []);
+    // Försök hämta från localStorage först
+    const localData = getConfig(STORAGE_KEYS.POST_VIEW_DATA);
+    if (localData) return localData;
+    
+    // Annars hämta från IndexedDB
+    try {
+      const dbData = await getFromIndexedDB('csvData');
+      if (dbData && Array.isArray(dbData) && dbData.length > 0) {
+        // Returnera den senaste (sortera efter timestamp)
+        const sortedData = dbData.sort((a, b) => b.timestamp - a.timestamp);
+        return sortedData[0].postViewData;
+      }
+    } catch (dbError) {
+      console.warn('Fel vid hämtning från IndexedDB:', dbError);
+      // Fortsätt med tom array
+    }
+    
+    return [];
   } catch (error) {
     console.error('Fel vid hämtning av bearbetad data:', error);
     return [];
@@ -267,73 +665,47 @@ export const getPostViewData = async () => {
 };
 
 /**
- * Hämtar statistik om lagringsutrymme
- * @returns {Promise<Object>} - Information om lagringsutrymme
- */
-export const getStorageStats = async () => {
-  try {
-    // Förenklade beräkningar för att undvika fel
-    let localStorageUsed = 0;
-    let fbLocalStorageUsed = 0;
-    
-    // Lista över alla nycklar som tillhör vår app
-    const fbKeyPrefix = 'facebook_stats_';
-    
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key) continue; // Hoppa över null-nycklar
-      
-      try {
-        const value = localStorage.getItem(key) || '';
-        
-        // Total storlek för alla nycklar
-        localStorageUsed += (key.length + value.length) * 2; // Approximation i bytes
-        
-        // Storlek bara för facebook-relaterade nycklar
-        if (key.startsWith(fbKeyPrefix)) {
-          fbLocalStorageUsed += (key.length + value.length) * 2;
-        }
-      } catch (e) {
-        console.warn(`Kunde inte beräkna storleken för nyckel ${key}:`, e);
-      }
-    }
-    
-    return {
-      localStorage: {
-        used: localStorageUsed,
-        fbUsed: fbLocalStorageUsed,
-        limit: STORAGE_LIMITS.LOCAL_STORAGE_MAX,
-        percentage: (localStorageUsed / STORAGE_LIMITS.LOCAL_STORAGE_MAX) * 100
-      },
-      indexedDB: {
-        totalItems: 0,
-        estimatedSize: 0,
-        fbItems: 0,
-        fbSize: 0,
-        percentage: 0
-      },
-      total: {
-        used: localStorageUsed,
-        fbUsed: fbLocalStorageUsed,
-        limit: STORAGE_LIMITS.LOCAL_STORAGE_MAX,
-        percentage: (localStorageUsed / STORAGE_LIMITS.LOCAL_STORAGE_MAX) * 100
-      }
-    };
-  } catch (error) {
-    console.error('Fel vid hämtning av lagringsstatistik:', error);
-    return {
-      error: error.message,
-      localStorage: { used: 0, fbUsed: 0, limit: STORAGE_LIMITS.LOCAL_STORAGE_MAX, percentage: 0 },
-      indexedDB: { totalItems: 0, estimatedSize: 0, fbItems: 0, fbSize: 0, percentage: 0 },
-      total: { used: 0, fbUsed: 0, percentage: 0 }
-    };
-  }
-};
-
-/**
  * Öppnar extern URL i en ny flik
  */
-export const openExternalLink = (url) => {
+const openExternalLink = (url) => {
   window.open(url, '_blank', 'noopener,noreferrer');
   return true;
+};
+
+// Hjälpfunktion för att återställa databasen
+const resetDatabase = async () => {
+  return new Promise((resolve, reject) => {
+    const deleteRequest = indexedDB.deleteDatabase(DB_CONFIG.name);
+    
+    deleteRequest.onsuccess = () => {
+      console.log('Database successfully deleted');
+      resolve(true);
+    };
+    
+    deleteRequest.onerror = (err) => {
+      console.error('Error deleting database:', err);
+      reject(err);
+    };
+  });
+};
+
+export {
+  STORAGE_KEYS,
+  readColumnMappings,
+  saveColumnMappings,
+  handleFileUpload,
+  downloadFile,
+  downloadExcel,
+  saveProcessedData,
+  getAccountViewData,
+  getPostViewData,
+  openExternalLink,
+  getUploadedFilesMetadata,
+  addFileMetadata,
+  removeFileMetadata,
+  clearFileMetadata,
+  getMemoryUsageStats,
+  updateMemoryUsageStats,
+  clearAllData,
+  resetDatabase // Exportera denna för debugging
 };

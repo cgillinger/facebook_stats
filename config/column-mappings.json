@@ -1,55 +1,110 @@
 {
-  "Post ID": "post_id",
-  "Page ID": "page_id",
-  "Page name": "page_name",
-  "Title": "title",
-  "Description": "description",
-  "Publish time": "publish_time",
-  "Post type": "post_type",
-  "Permalink": "permalink",
-  "Reach": "post_reach",
-  "Reactions, Comments and Shares": "engagement_total",
-  "Reactions": "reactions",
-  "Comments": "comments",
-  "Shares": "shares",
-  "Total clicks": "total_clicks",
-  "Other Clicks": "other_clicks",
-  "Link Clicks": "link_clicks",
-  "Duration (sec)": "duration_seconds",
-  "Caption type": "caption_type",
-  "Is crosspost": "is_crosspost",
-  "Is share": "is_share",
-  "Languages": "languages",
-  "Custom labels": "custom_labels",
-  "Funded content status": "funded_content_status",
-  "Data comment": "data_comment",
-  "Date": "date",
-  "3-second video views": "video_views_3s",
-  "1-minute video views": "video_views_1m",
-  "3-Second viewers": "viewers_3s",
-  "1-minute viewers": "viewers_1m",
-  "3-second video views from Boosted posts": "video_views_3s_boosted",
-  "3-second video views from Organic posts": "video_views_3s_organic",
-  "1-minute video views from Recommendations": "video_views_1m_recommendations",
-  "1-minute video views from Shares": "video_views_1m_shares",
-  "1-minute video views from Followers": "video_views_1m_followers",
-  "1-minute video views from Boosted posts": "video_views_1m_boosted",
-  "Seconds viewed from Recommendations": "seconds_viewed_recommendations",
-  "Seconds viewed from Shares": "seconds_viewed_shares",
-  "Seconds viewed from Followers": "seconds_viewed_followers",
-  "Seconds viewed from Boosted posts": "seconds_viewed_boosted",
-  "Average Seconds viewed from Recommendations": "avg_seconds_viewed_recommendations",
-  "Average Seconds viewed from Shares": "avg_seconds_viewed_shares",
-  "Average Seconds viewed from Followers": "avg_seconds_viewed_followers",
-  "Average Seconds viewed from Boosted posts": "avg_seconds_viewed_boosted",
-  "Seconds viewed": "seconds_viewed_total",
-  "Average Seconds viewed": "avg_seconds_viewed_total",
-  "Estimated earnings (USD)": "estimated_earnings_usd",
-  "Ad CPM (USD)": "ad_cpm_usd",
-  "Ad impressions": "ad_impressions",
-  "Returning viewers": "returning_viewers",
-  "1-minute video views by returning viewers": "video_views_1m_returning",
-  "Seconds viewed by returning viewers": "seconds_viewed_returning",
-  "Average Seconds viewed by returning viewers": "avg_seconds_viewed_returning",
-  "Views": "impressions"
+  "version": "1.0",
+  "categories": {
+    "metadata": {
+      "title": "Metadata",
+      "description": "Grundläggande information om inlägget",
+      "fields": {
+        "postId": {
+          "required": true,
+          "aliases": ["Publicerings-id", "Post ID", "Inläggs-ID", "PostID"],
+          "type": "string",
+          "description": "Unikt ID för inlägget"
+        },
+        "accountId": {
+          "required": true,
+          "aliases": ["Sid-id", "Account ID", "Konto-ID", "KontoID"],
+          "type": "string",
+          "description": "ID för Facebook-sidan"
+        },
+        "accountName": {
+          "required": true,
+          "aliases": ["Sidnamn", "Account name", "Kontonamn"],
+          "type": "string",
+          "description": "Namnet på Facebook-sidan"
+        }
+      }
+    },
+    "metrics": {
+      "title": "Mätvärden",
+      "description": "Grundläggande mätvärden för inlägg",
+      "fields": {
+        "views": {
+          "required": true,
+          "aliases": ["Visningar", "Views"],
+          "type": "number",
+          "aggregationType": "sum",
+          "description": "Antal visningar"
+        }
+      }
+    },
+    "reach": {
+      "title": "Räckvidd",
+      "description": "Mätvärden för inläggets räckvidd",
+      "fields": {
+        "reach": {
+          "required": true,
+          "aliases": ["Räckvidd", "Reach"],
+          "type": "number",
+          "aggregationType": "max",
+          "description": "Räckvidd för inlägget"
+        }
+      }
+    },
+    "engagement": {
+      "title": "Engagemang",
+      "description": "Mätvärden för användarengagemang",
+      "fields": {
+        "total_engagement": {
+          "required": true,
+          "aliases": ["Reaktioner, kommentarer och delningar", "Total engagement"],
+          "type": "number",
+          "aggregationType": "sum",
+          "description": "Totalt antal interaktioner"
+        },
+        "likes": {
+          "required": true,
+          "aliases": ["Reaktioner", "Likes", "Gilla-markeringar"],
+          "type": "number",
+          "aggregationType": "sum",
+          "description": "Antal reaktioner"
+        },
+        "comments": {
+          "required": true,
+          "aliases": ["Kommentarer", "Comments"],
+          "type": "number",
+          "aggregationType": "sum",
+          "description": "Antal kommentarer"
+        },
+        "shares": {
+          "required": true,
+          "aliases": ["Delningar", "Shares"],
+          "type": "number",
+          "aggregationType": "sum",
+          "description": "Antal delningar"
+        },
+        "total_clicks": {
+          "required": true,
+          "aliases": ["Totalt antal klick", "Total clicks"],
+          "type": "number",
+          "aggregationType": "sum",
+          "description": "Totalt antal klick"
+        },
+        "other_clicks": {
+          "required": true,
+          "aliases": ["Övriga klick", "Other clicks"],
+          "type": "number",
+          "aggregationType": "sum",
+          "description": "Antal övriga klick"
+        },
+        "link_clicks": {
+          "required": true,
+          "aliases": ["Länkklick", "Link clicks"],
+          "type": "number",
+          "aggregationType": "sum",
+          "description": "Antal klick på länkar"
+        }
+      }
+    }
+  }
 }

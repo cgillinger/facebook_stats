@@ -2,11 +2,11 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
+// https://vitejs.dev/config/
 export default defineConfig({
-  // Uppdaterad base-sökväg för GitHub Pages repository
-  base: '/facebook_stats/',
-  
   plugins: [react()],
+  // Lägg till base-path för att köra i undermapp
+  base: '/facebook_stats/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

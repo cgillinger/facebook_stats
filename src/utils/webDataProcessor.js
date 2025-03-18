@@ -3,138 +3,163 @@
  * 
  * Webbversion av Facebook databearbetning som använder
  * webbläsarens API:er för att hantera och bearbeta data.
- * Stöd för att bearbeta flera CSV-filer och hantera stora datamängder.
  */
 import Papa from 'papaparse';
-import { saveProcessedData } from './webStorageService';
-import { EXCLUDED_COLUMN_NAMES } from '../renderer/components/ColumnMappingEditor/columnMappingService';
+import { 
+  saveProcessedData, 
+  getAccountViewData, 
+  getPostViewData
+} from './webStorageService';
+import { DEFAULT_MAPPINGS, getValue, normalizeText } from '../renderer/components/ColumnMappingEditor/columnMappingService';
+
+// Fältaliaser för kompatibilitet med Facebook
+const FIELD_ALIASES = {
+  'page_id': 'account_id',
+  'page_name': 'account_name',
+  'reactions': 'likes',
+  'engagement_total': 'total_engagement',
+  'post_reach': 'reach',
+  'impressions': 'views'
+};
+
+// Direkta mappningar för Facebook-specifika kolumnnamn
+const FACEBOOK_DIRECT_MAPPINGS = {
+  'Sid-id': 'account_id',
+  'Sidnamn': 'account_name',
+  'Visningar': 'views',
+  'Räckvidd': 'reach',
+  'Reaktioner': 'likes',
+  'Kommentarer': 'comments',
+  'Delningar': 'shares',
+  'Reaktioner, kommentarer och delningar': 'total_engagement',
+  'Totalt antal klick': 'total_clicks',
+  'Länkklick': 'link_clicks',
+  'Övriga klick': 'other_clicks',
+  'Publiceringstid': 'publish_time',
+  'Titel': 'description',      // Mappar Titel till description
+  'Inläggstyp': 'post_type',
+  'Permalänk': 'permalink',
+  'Publicerings-id': 'post_id'
+};
 
 // Summeringsbara värden för "Per konto"-vy
-const SUMMARIZABLE_COLUMNS = [
-  "impressions", "post_reach", "engagement_total", "reactions", 
-  "comments", "shares", "total_clicks", "other_clicks", "link_clicks"
-];
+const SUMMARIZABLE_COLUMNS = Object.values(DEFAULT_MAPPINGS).filter(col => [
+  "views", "likes", "comments", "shares", "total_engagement", "total_clicks", "other_clicks", "link_clicks"
+].includes(col));
 
 // Metadata och icke-summeringsbara värden
-const NON_SUMMARIZABLE_COLUMNS = [
-  "post_id", "page_id", "page_name", "title", "description",
-  "publish_time", "post_type", "permalink"
-];
-
-// För att förhindra dubbelprocess med samma CSV
-let processingCache = new Map();
-// Cache för post_id för att förhindra dubletter mellan filer
-let globalPostIdCache = new Set();
-
-// Flagga för att endast logga kolumner en gång per session
-let hasLoggedColumns = false;
-
-// Flagga för att förhindra flera samtida bearbetningar av samma fil
-let processingInProgress = false;
-let processingQueue = [];
+const NON_SUMMARIZABLE_COLUMNS = Object.values(DEFAULT_MAPPINGS).filter(col => [
+  "post_id", "account_id", "account_name", "account_username", "description",
+  "publish_time", "date", "post_type", "permalink"
+].includes(col));
 
 /**
- * Kontrollerar om ett kolumnnamn ska exkluderas från automatisk mappning
+ * Formaterar datum till svenskt format (YYYY-MM-DD)
  */
-function isExcludedColumn(columnName) {
-  if (!columnName) return true;
-  return EXCLUDED_COLUMN_NAMES.some(excluded => 
-    normalizeText(columnName) === normalizeText(excluded)
-  );
-}
-
-/**
- * Normaliserar text för konsekvent jämförelse
- * Returnerar tom sträng om null/undefined, annars lowercase, trimmat, utan multipla mellanslag
- */
-function normalizeText(text) {
-  if (text === null || text === undefined) return '';
-  return text.toString()
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ') // Hantera multipla mellanslag
-    .replace(/[\u200B-\u200D\uFEFF]/g, ''); // Ta bort osynliga tecken
-}
-
-/**
- * Genererar en enkel hash från en sträng för att identifiera unika filer
- */
-function simpleHash(str) {
-  let hash = 0;
-  if (str.length === 0) return hash;
+function formatSwedishDate(date) {
+  if (!date) return '';
   
-  // Använd bara de första 10000 tecknen för snabbhet
-  for (let i = 0; i < Math.min(str.length, 10000); i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Konvertera till 32-bit heltal
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return '';
+    
+    return d.toLocaleDateString('sv-SE', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+  } catch (error) {
+    console.error('Fel vid datumformatering:', error);
+    return '';
+  }
+}
+
+/**
+ * Räknar unika konton i en datamängd
+ * @param {Array} data - Datamängden att analysera
+ * @returns {number} - Antal unika konton
+ */
+function countUniqueAccounts(data) {
+  if (!Array.isArray(data) || data.length === 0) return 0;
+  
+  // Använd Set för att hålla unika account_id/page_id
+  const uniqueAccountIds = new Set();
+  
+  // Logga första raden för debugging
+  if (data.length > 0) {
+    console.log('Analyzing first row for account detection:', {
+      firstRow: data[0],
+      has_Sid_id: data[0]['Sid-id'] !== undefined,
+      has_account_id: data[0]['account_id'] !== undefined,
+      has_page_id: data[0]['page_id'] !== undefined
+    });
   }
   
-  return hash.toString();
+  data.forEach(row => {
+    // Kontrollera först direkta kolumnnamn från Facebook
+    if (row['Sid-id'] !== undefined) {
+      uniqueAccountIds.add(String(row['Sid-id']));
+      return; // Om vi hittade ID via denna metod, kan vi fortsätta med nästa rad
+    }
+    
+    // Kontrollera både account_id och page_id för att vara säker
+    let accountId = getValue(row, 'account_id');
+    
+    // Om account_id inte finns, prova med page_id direkt
+    if (!accountId && row.page_id) {
+      accountId = row.page_id;
+    }
+    
+    if (accountId) {
+      uniqueAccountIds.add(String(accountId));
+    }
+  });
+  
+  // Logga resultat för debugging
+  console.log('Found unique account IDs:', uniqueAccountIds.size);
+  return uniqueAccountIds.size || 1; // Fallback till 1 om inga konton hittas (bättre än 0)
 }
 
 /**
  * Identifierar och hanterar dubletter baserat på Post ID
- * Kan hantera dubletter både inom en fil och mellan filer
- * @param {Array} data - Rader att kontrollera för dubletter
- * @param {Object} columnMappings - Mapping från originalkolumnnamn till interna namn
- * @param {boolean} checkGlobalDuplicates - Om true, kontrollerar även mot global post_id cache
+ * Använder getValue för att stödja olika språk
  */
-function handleDuplicates(data, columnMappings, checkGlobalDuplicates = true) {
-  // Skapa en map för att identifiera post_id kolumnen
-  const internalToExternal = {};
-  Object.entries(columnMappings).forEach(([external, internal]) => {
-    if (!isExcludedColumn(external)) {
-      if (!internalToExternal[internal]) {
-        internalToExternal[internal] = [];
-      }
-      internalToExternal[internal].push(external);
-    }
-  });
-  
-  // Hitta alla möjliga kolumnnamn för post_id
-  const possiblePostIdColumns = internalToExternal['post_id'] || [];
-  const normalizedPostIdColumns = possiblePostIdColumns.map(col => normalizeText(col));
-  
+function handleDuplicates(data, columnMappings, existingData = []) {
   // Skapa en map för att hålla reda på unika post_ids
   const uniquePosts = new Map();
   const duplicateIds = new Set();
   let duplicateCount = 0;
-  const totalRows = data.length;
+  const totalRows = data.length + existingData.length;
   
-  // För att spåra nya post IDs
-  const newPostIds = new Set();
-  
-  // Identifiera och räkna dubletter
-  data.forEach(row => {
-    // Hitta post_id i denna rad
-    let postId = null;
-    
-    // Sök genom alla möjliga post_id kolumner
-    for (const key of Object.keys(row)) {
-      const normKey = normalizeText(key);
-      if (normalizedPostIdColumns.includes(normKey)) {
-        postId = row[key];
-        break;
+  // Lägg först in befintliga data (om det finns)
+  if (existingData && existingData.length > 0) {
+    existingData.forEach(row => {
+      const postId = getValue(row, 'post_id');
+      
+      if (postId) {
+        const postIdStr = String(postId);
+        uniquePosts.set(postIdStr, row);
+      } else {
+        // Om ingen post_id finns, använd hela raden som unik nyckel
+        const rowStr = JSON.stringify(row);
+        uniquePosts.set(rowStr, row);
       }
-    }
+    });
+  }
+  
+  // Gå igenom nya data och identifiera dubletter
+  data.forEach(row => {
+    // Använd getValue för att hitta post_id oavsett vilket språk CSV-filen är på
+    const postId = getValue(row, 'post_id');
     
     if (postId) {
       const postIdStr = String(postId);
       
-      // Kontrollera om det är en dublett i denna datamängd
       if (uniquePosts.has(postIdStr)) {
         duplicateCount++;
         duplicateIds.add(postIdStr);
-      } 
-      // Kontrollera mot den globala cachen om det är aktiverat
-      else if (checkGlobalDuplicates && globalPostIdCache.has(postIdStr)) {
-        duplicateCount++;
-        duplicateIds.add(postIdStr);
-      }
-      else {
+      } else {
         uniquePosts.set(postIdStr, row);
-        newPostIds.add(postIdStr);
       }
     } else {
       // Om ingen post_id finns, använd hela raden som unik nyckel
@@ -147,11 +172,6 @@ function handleDuplicates(data, columnMappings, checkGlobalDuplicates = true) {
     }
   });
   
-  // Lägg till nya post IDs i den globala cachen
-  if (checkGlobalDuplicates) {
-    newPostIds.forEach(id => globalPostIdCache.add(id));
-  }
-  
   // Konvertera Map till array av unika rader
   const uniqueData = Array.from(uniquePosts.values());
   
@@ -160,101 +180,223 @@ function handleDuplicates(data, columnMappings, checkGlobalDuplicates = true) {
     stats: {
       totalRows,
       duplicates: duplicateCount,
-      duplicateIds: Array.from(duplicateIds),
-      uniquePostIds: uniqueData.length
+      duplicateIds: Array.from(duplicateIds)
     }
   };
 }
 
 /**
- * Mappar CSV-kolumnnamn till interna namn med hjälp av kolumnmappningar
- * Använder endast exakt matchning efter normalisering
+ * Förbearbeta Facebook-rad innan mappning
+ * @param {Object} row - Raden att förbearbeta
  */
-function mapColumnNames(row, columnMappings) {
-  const mappedRow = {};
+function preprocessFacebookRow(row) {
+  // Kontrollera vilka kolumner som finns i första raden
+  console.log('PreprocessFacebookRow - Available columns:', Object.keys(row));
+  console.log('PreprocessFacebookRow - Titel value:', row['Titel']);
+  console.log('PreprocessFacebookRow - Beskrivning value:', row['Beskrivning']);
   
-  // Normalisera kolumnmappningar
-  const normalizedMappings = new Map();
-  Object.entries(columnMappings).forEach(([originalCol, internalName]) => {
-    if (!isExcludedColumn(originalCol)) {
-      normalizedMappings.set(normalizeText(originalCol), internalName);
-    }
-  });
+  // Skapa en kopia för att inte modifiera originalet
+  const processedRow = { ...row };
   
-  // Utskrift för felsökning - enbart en gång per session
-  if (!hasLoggedColumns) {
-    console.log('Kolumner i CSV:', Object.keys(row).map(k => `"${k}"`).join(', '));
-    console.log('Normaliserade mappningar:', Array.from(normalizedMappings.entries()).map(([k, v]) => `"${k}" -> "${v}"`).join(', '));
-    hasLoggedColumns = true;
+  // För Facebook, använd alltid Titel som description
+  if (processedRow['Titel'] !== undefined) {
+    processedRow['description'] = processedRow['Titel'];
+    console.log('PreprocessFacebookRow - Set description from Titel:', processedRow['description']);
   }
   
-  // För varje kolumn i raden, försök hitta en matchning
-  Object.entries(row).forEach(([colName, value]) => {
-    // Hoppa över kolumner som ska exkluderas
-    if (isExcludedColumn(colName)) {
+  return processedRow;
+}
+
+/**
+ * Mappar CSV-kolumnnamn till interna namn med hjälp av kolumnmappningar
+ * @param {Object} row - Raden att mappa
+ * @param {Object} columnMappings - Användarkonfigurerade kolumnmappningar
+ * @param {boolean} isFacebookData - Om det är Facebook-data
+ * @returns {Object} - Mappade raden
+ */
+function mapColumnNames(row, columnMappings, isFacebookData = false) {
+  const mappedRow = {};
+  
+  // För Facebook-data, förbearbeta för att sätta viktiga värden direkt
+  if (isFacebookData) {
+    // För debugging
+    console.log('Facebook data detected, before mapping columns:', 
+      Object.keys(row).includes('Titel') ? 'Has Titel' : 'No Titel',
+      Object.keys(row).includes('Visningar') ? 'Has Visningar' : 'No Visningar'
+    );
+    
+    // DIREKT ÖVERFÖRING AV FACEBOOK-SPECIFIKA FÄLT
+    // Sätt description direkt om Titel finns
+    if (row['Titel'] !== undefined) {
+      mappedRow.description = row['Titel'];
+      console.log('DIRECT SET: Using Titel as description:', mappedRow.description);
+    }
+    
+    // Sätt views direkt om Visningar finns
+    if (row['Visningar'] !== undefined) {
+      mappedRow.views = row['Visningar'];
+      console.log('DIRECT SET: Using Visningar as views:', mappedRow.views);
+    }
+    
+    // Sätt account_id direkt om Sid-id finns
+    if (row['Sid-id'] !== undefined) {
+      mappedRow.account_id = row['Sid-id'];
+      console.log('DIRECT SET: Using Sid-id as account_id:', mappedRow.account_id);
+    }
+    
+    // Sätt account_name direkt om Sidnamn finns
+    if (row['Sidnamn'] !== undefined) {
+      mappedRow.account_name = row['Sidnamn'];
+      console.log('DIRECT SET: Using Sidnamn as account_name:', mappedRow.account_name);
+    }
+  }
+  
+  // Standard mappning för övriga fält
+  Object.entries(row).forEach(([originalCol, value]) => {
+    // Hoppa över Facebook-specifika fält vi redan har behandlat
+    if (isFacebookData && 
+       (originalCol === 'Titel' && mappedRow.description !== undefined ||
+        originalCol === 'Visningar' && mappedRow.views !== undefined ||
+        originalCol === 'Sid-id' && mappedRow.account_id !== undefined ||
+        originalCol === 'Sidnamn' && mappedRow.account_name !== undefined)) {
       return;
     }
     
-    const normalizedColName = normalizeText(colName);
-    const internalName = normalizedMappings.get(normalizedColName);
+    // Standardmappning via konfigurerade mappningar
+    const normalizedCol = normalizeText(originalCol);
     
-    if (internalName) {
-      mappedRow[internalName] = value;
+    let internalName = null;
+    for (const [mapKey, mapValue] of Object.entries(columnMappings)) {
+      if (normalizeText(mapKey) === normalizedCol) {
+        internalName = mapValue;
+        break;
+      }
     }
+    
+    // Om ingen mappning hittades, behåll originalkolumnen som är
+    if (!internalName) {
+      internalName = originalCol;
+    }
+    
+    mappedRow[internalName] = value;
   });
+  
+  // Sista kontroll: om vi saknar description och har Titel, använd Titel
+  if (mappedRow.description === undefined && row['Titel'] !== undefined) {
+    mappedRow.description = row['Titel'];
+    console.log('FALLBACK: Setting description from Titel:', mappedRow.description);
+  }
   
   return mappedRow;
 }
 
 /**
- * Bearbetar CSV-innehåll och returnerar aggregerad data
- * Optimerad för att undvika dubbelprocess och effektivisera bearbetning
- * @param {string} csvContent - CSV-innehåll att bearbeta
- * @param {Object} columnMappings - Kolumnmappningar att använda
- * @param {boolean} checkDuplicatesGlobally - Om true, kontrollerar dubletter mot global cache
+ * Analyserar CSV-filen och returnerar basinformation (utan att bearbeta data)
  */
-export async function processFacebookData(csvContent, columnMappings, checkDuplicatesGlobally = true) {
-  // Skapa en cache-nyckel baserad på innehållet
-  const cacheKey = simpleHash(csvContent);
-  
-  // Om denna fil redan bearbetats, återanvänd resultatet
-  if (processingCache.has(cacheKey)) {
-    console.log('Återanvänder tidigare bearbetad data (cache hit)');
-    return processingCache.get(cacheKey);
-  }
-  
-  // Om bearbetning redan pågår, köa denna begäran
-  if (processingInProgress) {
-    console.log('Bearbetning pågår redan, köar begäran');
-    return new Promise((resolve, reject) => {
-      processingQueue.push({
-        csvContent,
-        columnMappings,
-        checkDuplicatesGlobally,
-        resolve,
-        reject,
-        cacheKey
-      });
-    });
-  }
-  
-  // Sätt flaggor för att börja bearbeta
-  processingInProgress = true;
-  hasLoggedColumns = false;  // Tillåt loggning av kolumner för denna nya fil
-  
+export async function analyzeCSVFile(csvContent) {
   return new Promise((resolve, reject) => {
     try {
-      console.log('Börjar bearbeta CSV-data');
+      Papa.parse(csvContent, {
+        header: true,
+        preview: 5, // Analysera bara några rader för snabbhet
+        skipEmptyLines: true,
+        complete: (results) => {
+          if (!results.data || results.data.length === 0) {
+            reject(new Error('Ingen data hittades i CSV-filen.'));
+            return;
+          }
+          
+          // Uppskatta totalt antal rader (approximativt)
+          const linesCount = csvContent.split('\n').length - 1; // -1 för rubrikraden
+          
+          resolve({
+            columns: Object.keys(results.data[0]).length,
+            columnNames: Object.keys(results.data[0]),
+            rows: linesCount,
+            sampleData: results.data.slice(0, 3), // Några exempel
+            fileSize: csvContent.length,
+            fileSizeKB: Math.round(csvContent.length / 1024)
+          });
+        },
+        error: (error) => {
+          console.error('Fel vid CSV-analys:', error);
+          reject(error);
+        }
+      });
+    } catch (error) {
+      console.error('Oväntat fel vid analys:', error);
+      reject(error);
+    }
+  });
+}
+
+/**
+ * Detekterar om en CSV-fil är från Facebook baserat på kolumnnamn
+ * @param {Object} firstRow - Första raden i CSV-data
+ * @returns {boolean} - true om det är Facebook-data
+ */
+function isFacebookData(firstRow) {
+  // Kontrollera Facebook-specifika kolumner
+  return firstRow && (
+    firstRow['Sid-id'] !== undefined || 
+    firstRow['Sidnamn'] !== undefined ||
+    firstRow['Inläggstyp'] !== undefined
+  );
+}
+
+/**
+ * Bearbetar CSV-innehåll och returnerar aggregerad data
+ */
+export async function processPostData(csvContent, columnMappings, shouldMergeWithExisting = false, fileName = 'Facebook CSV') {
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Om vi ska slå samman med befintlig data, hämta den först
+      let existingPostData = [];
+      let existingAccountData = [];
+      
+      if (shouldMergeWithExisting) {
+        try {
+          existingPostData = await getPostViewData() || [];
+          existingAccountData = await getAccountViewData() || [];
+          console.log('Befintlig data hämtad för sammanslagning:', {
+            postCount: existingPostData.length,
+            accountCount: existingAccountData.length
+          });
+        } catch (error) {
+          console.warn('Kunde inte hämta befintlig data:', error);
+          // Fortsätt ändå med tomma arrayer
+        }
+      }
       
       Papa.parse(csvContent, {
         header: true,
         dynamicTyping: true,
         skipEmptyLines: true,
-        complete: async (results) => {
+        complete: (results) => {
           if (!results.data || results.data.length === 0) {
-            processingInProgress = false;
             reject(new Error('Ingen data hittades i CSV-filen.'));
             return;
+          }
+          
+          // Detektera om det är Facebook-data
+          const isFromFacebook = isFacebookData(results.data[0]);
+          console.log('Data source detected:', isFromFacebook ? 'Facebook' : 'Unknown', 'First row keys:', Object.keys(results.data[0]));
+          
+          // För Facebook, kontrollera alla kolumnnamn och deras värden (debugging)
+          if (isFromFacebook && results.data.length > 0) {
+            const firstRow = results.data[0];
+            console.log('FACEBOOK DATA DETECTED - First row:', firstRow);
+            
+            // Kontrollera om det finns Visningar och Titel
+            const hasVisningar = 'Visningar' in firstRow;
+            const hasTitel = 'Titel' in firstRow;
+            
+            console.log('Column check:', { 
+              hasVisningar, 
+              hasTitel,
+              visningarValue: hasVisningar ? firstRow['Visningar'] : undefined,
+              titelValue: hasTitel ? firstRow['Titel'] : undefined
+            });
           }
           
           console.log('CSV-data analyserad:', {
@@ -262,53 +404,153 @@ export async function processFacebookData(csvContent, columnMappings, checkDupli
             columns: Object.keys(results.data[0]).length
           });
           
-          // Identifiera och filtrera dubletter
+          // För Facebook, förbearbeta data för att sätta description från Titel
+          let processedData = results.data;
+          if (isFromFacebook) {
+            console.log('Preprocessing Facebook data for Titel handling');
+            processedData = results.data.map(row => {
+              if (row['Titel'] !== undefined) {
+                // Skapa direkta kopior av viktiga fält
+                return { 
+                  ...row, 
+                  // Sätt description direkt från Titel
+                  description: row['Titel']
+                };
+              }
+              return row;
+            });
+            
+            // Debugging - kontrollera första raden efter förbearbetning
+            if (processedData.length > 0) {
+              console.log('After preprocessing, first row description:', 
+                processedData[0].description,
+                'Original Titel:', results.data[0]['Titel']
+              );
+            }
+          }
+          
+          // Räkna unika konton i den nya filen INNAN sammanslagningen
+          const uniqueAccountsInFile = countUniqueAccounts(processedData);
+          console.log('Unika konton hittades:', uniqueAccountsInFile);
+          
+          // Identifiera och filtrera dubletter med tillgång till kolumnmappningar
           const { filteredData, stats } = handleDuplicates(
-            results.data, 
-            columnMappings, 
-            checkDuplicatesGlobally
+            processedData, 
+            columnMappings,
+            shouldMergeWithExisting ? existingPostData : []
           );
           
           console.log('Dubbletthantering klar:', {
             originalRows: stats.totalRows,
             filteredRows: filteredData.length,
-            duplicatesRemoved: stats.duplicates,
-            uniquePostIds: stats.uniquePostIds
+            duplicatesRemoved: stats.duplicates
           });
           
           let perKonto = {};
           let perPost = [];
           
-          // Bearbeta varje unik rad
-          filteredData.forEach(row => {
-            // Mappa kolumnnamn till interna namn
-            const mappedRow = mapColumnNames(row, columnMappings);
+          // Hitta datumintervall
+          let allDates = [];
+          
+          // Om vi sammanfogar med befintlig data, starta med den
+          if (shouldMergeWithExisting && existingPostData.length > 0) {
+            perPost = [...existingPostData];
             
-            // Extrahera sid-ID (page_id)
-            const pageID = mappedRow['page_id'] || 'unknown';
-            if (!pageID || pageID === 'unknown') {
-              console.warn('Rad utan giltigt sid-ID:', row);
+            // Extrahera datumintervall från befintlig data
+            existingPostData.forEach(post => {
+              const publishDate = getValue(post, 'publish_time') || 
+                                 getValue(post, 'date') || 
+                                 post['Publiceringstid'] || 
+                                 post['Datum'];
+              
+              if (publishDate) {
+                const date = new Date(publishDate);
+                if (!isNaN(date.getTime())) {
+                  allDates.push(date);
+                }
+              }
+            });
+            
+            // Skapa konton från befintlig data
+            existingAccountData.forEach(account => {
+              const accountID = account.account_id;
+              if (accountID) {
+                perKonto[accountID] = { ...account };
+              }
+            });
+          }
+          
+          // Bearbeta varje unik rad från nya data
+          filteredData.forEach((row, index) => {
+            // Hoppa över om raden redan finns i perPost (duplicate check)
+            // Detta är en extra säkerhet utöver handleDuplicates
+            const postId = getValue(row, 'post_id');
+            if (postId && perPost.some(p => getValue(p, 'post_id') === postId)) {
               return;
             }
             
+            // För debugging, kontrollera första raden
+            const isFirstRow = index === 0;
+            if (isFirstRow && isFromFacebook) {
+              console.log('Processing first row of Facebook data:', row);
+              console.log('Row Titel before mapping:', row['Titel']);
+              console.log('Row description before mapping (if exists):', row['description']);
+            }
+            
+            // Mappa kolumnnamn till interna namn
+            const mappedRow = mapColumnNames(row, columnMappings, isFromFacebook);
+            
+            // För debugging, kontrollera mappat resultat
+            if (isFirstRow && isFromFacebook) {
+              console.log('Mapped row keys:', Object.keys(mappedRow));
+              console.log('description value after mapping:', mappedRow.description);
+              console.log('views value after mapping:', mappedRow.views);
+            }
+            
+            // Använd getValue för att få accountID för att säkerställa att vi använder rätt fält
+            const accountID = getValue(mappedRow, 'account_id') || 'unknown';
+            
+            if (!accountID) return;
+            
+            // Använd getValue för att säkerställa att account_name finns
+            const accountName = getValue(mappedRow, 'account_name') || 'Okänd sida';
+            
+            // Ingen account_username i FB, men vi behåller fältet för kompabilitet
+            const accountUsername = '';
+            
+            // Samla in publiceringsdatum för datumintervall
+            const publishDate = getValue(mappedRow, 'publish_time') || 
+                               getValue(mappedRow, 'date') || 
+                               mappedRow['Publiceringstid'] || 
+                               mappedRow['Datum'];
+            
+            if (publishDate) {
+              const date = new Date(publishDate);
+              if (!isNaN(date.getTime())) {
+                allDates.push(date);
+              }
+            }
+            
             // Skapa konto-objekt om det inte finns
-            if (!perKonto[pageID]) {
-              perKonto[pageID] = { 
-                "page_id": pageID,
-                "page_name": mappedRow["page_name"] || 'Okänd sida'
+            if (!perKonto[accountID]) {
+              perKonto[accountID] = { 
+                "account_id": accountID,
+                "account_name": accountName,
+                "account_username": accountUsername
               };
-              
-              // Initiera alla summeringsbara fält till 0
-              SUMMARIZABLE_COLUMNS.forEach(col => {
-                perKonto[pageID][col] = 0;
-              });
+              SUMMARIZABLE_COLUMNS.forEach(col => perKonto[accountID][col] = 0);
             }
             
             // Summera värden
             SUMMARIZABLE_COLUMNS.forEach(col => {
-              const value = mappedRow[col];
-              if (value !== undefined && value !== null && !isNaN(parseFloat(value))) {
-                perKonto[pageID][col] += parseFloat(value);
+              const value = getValue(mappedRow, col);
+              if (value !== null && !isNaN(parseFloat(value))) {
+                perKonto[accountID][col] += parseFloat(value);
+                
+                // För debugging, spåra views-värden
+                if (col === 'views' && isFirstRow) {
+                  console.log(`Adding views value ${value} to account ${accountID}`);
+                }
               }
             });
             
@@ -316,123 +558,68 @@ export async function processFacebookData(csvContent, columnMappings, checkDupli
             perPost.push(mappedRow);
           });
           
-          // Beräkna genomsnittlig räckvidd för konton
-          Object.values(perKonto).forEach(account => {
-            const accountPosts = perPost.filter(post => post.page_id === account.page_id);
-            // Filtrera poster med giltiga räckviddsvärden
-            const validReachPosts = accountPosts.filter(post => 
-              post.post_reach !== undefined && 
-              post.post_reach !== null && 
-              !isNaN(parseFloat(post.post_reach))
-            );
+          // Beräkna datumintervall
+          let dateRange = { startDate: null, endDate: null };
+          
+          if (allDates.length > 0) {
+            const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
+            const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
             
-            if (validReachPosts.length > 0) {
-              const totalReach = validReachPosts.reduce((sum, post) => 
-                sum + parseFloat(post.post_reach), 0
-              );
-              account.average_reach = Math.round(totalReach / validReachPosts.length);
-            } else {
-              account.average_reach = 0;
-            }
-            
-            // Beräkna post_count
-            account.post_count = accountPosts.length;
-            
-            // Beräkna posts_per_day
-            // Leta efter tidigaste och senaste publiceringstid
-            let earliestDate = null;
-            let latestDate = null;
-            
-            accountPosts.forEach(post => {
-              const pubDate = post.publish_time ? new Date(post.publish_time) : null;
-              if (pubDate && !isNaN(pubDate.getTime())) {
-                if (!earliestDate || pubDate < earliestDate) earliestDate = pubDate;
-                if (!latestDate || pubDate > latestDate) latestDate = pubDate;
-              }
-            });
-            
-            if (earliestDate && latestDate) {
-              const daysDiff = Math.max(1, Math.ceil((latestDate - earliestDate) / (1000 * 60 * 60 * 24)));
-              account.posts_per_day = parseFloat((account.post_count / daysDiff).toFixed(2));
-            } else {
-              account.posts_per_day = account.post_count;
-            }
-          });
+            dateRange = {
+              startDate: formatSwedishDate(minDate),
+              endDate: formatSwedishDate(maxDate)
+            };
+          }
           
           // Konvertera till arrays
           const perKontoArray = Object.values(perKonto);
           
-          // Skapa resultatet
-          const result = {
-            accountViewData: perKontoArray,
-            postViewData: perPost,
-            rows: perPost,
-            rowCount: perPost.length,
-            meta: {
-              processedAt: new Date(),
-              stats: stats
-            }
+          // Skapa filmetadataobjekt för att spåra uppladdad fil
+          const fileInfo = {
+            filename: fileName || 'Facebook CSV', // Använd det riktiga filnamnet
+            originalFileName: fileName || 'Facebook CSV', // Spara originalfilnamnet för dublettkontroll
+            rowCount: results.data.length,
+            duplicatesRemoved: stats.duplicates,
+            // Använd det räknade värdet för unika konton i filen
+            accountCount: uniqueAccountsInFile,
+            dateRange,
+            isFromFacebook: isFromFacebook
           };
           
-          try {
-            // Spara data via webStorageService
-            await saveProcessedData(perKontoArray, perPost);
-            console.log('Bearbetning klar! Data sparad i webbläsaren.');
-          } catch (storageError) {
-            console.error('Varning: Kunde inte spara all data i webbläsaren:', storageError);
-            console.log('Fortsätter med bearbetad data i minnet.');
-          }
-          
-          // Cachea resultatet för framtida användning
-          processingCache.set(cacheKey, result);
-          
-          // Återställ flagga och hantera nästa köade bearbetning om den finns
-          processingInProgress = false;
-          
-          if (processingQueue.length > 0) {
-            const nextProcess = processingQueue.shift();
-            console.log('Bearbetar nästa köade förfrågning');
-            processFacebookData(
-              nextProcess.csvContent, 
-              nextProcess.columnMappings,
-              nextProcess.checkDuplicatesGlobally
-            )
-              .then(nextProcess.resolve)
-              .catch(nextProcess.reject);
-          }
-          
-          resolve(result);
+          // Spara data via webStorageService
+          saveProcessedData(perKontoArray, perPost, fileInfo)
+            .then(() => {
+              console.log('Bearbetning klar! Data sparad i webbläsaren.');
+              resolve({
+                accountViewData: perKontoArray,
+                postViewData: perPost,
+                rows: perPost,
+                rowCount: perPost.length,
+                meta: {
+                  processedAt: new Date(),
+                  stats: stats,
+                  dateRange: dateRange,
+                  isMergedData: shouldMergeWithExisting,
+                  filename: fileName,
+                  isFromFacebook: isFromFacebook
+                }
+              });
+            })
+            .catch((error) => {
+              console.error('Kunde inte spara bearbetad data:', error);
+              reject(error);
+            });
         },
         error: (error) => {
-          processingInProgress = false;
           console.error('Fel vid CSV-parsning:', error);
           reject(error);
         }
       });
     } catch (error) {
-      processingInProgress = false;
       console.error('Oväntat fel vid bearbetning:', error);
       reject(error);
     }
   });
-}
-
-/**
- * Rensar bearbetningscachen
- * Används för att tvinga en ny bearbetning när det behövs
- */
-export function clearProcessingCache() {
-  processingCache.clear();
-  console.log('Bearbetningscachen rensad');
-}
-
-/**
- * Rensar den globala post ID cachen
- * Används när man vill börja om från början utan dublettdetektion mellan filer
- */
-export function resetGlobalPostIdCache() {
-  globalPostIdCache.clear();
-  console.log('Global post ID cache rensad');
 }
 
 /**
@@ -442,61 +629,19 @@ export function getUniquePageNames(data) {
   if (!Array.isArray(data)) return [];
   
   // Extrahera och deduplicera sidnamn
-  const pageNames = new Set();
+  const accountNames = new Set();
   
   data.forEach(post => {
-    const pageName = post.page_name || 'Unknown';
-    if (pageName) {
-      pageNames.add(pageName);
+    const accountName = getValue(post, 'account_name');
+    if (accountName) {
+      accountNames.add(accountName);
     }
   });
   
-  return Array.from(pageNames).sort();
-}
-
-/**
- * Extraherar datumintervall från data
- * @param {Array} data - Data att analysera
- * @returns {Object|null} - Datumintervall {start, end} eller null
- */
-export function getDateRange(data) {
-  if (!Array.isArray(data) || data.length === 0) return null;
-  
-  // Samla alla giltiga publiceringsdatum
-  const dates = data
-    .map(item => item.publish_time || item.date)
-    .filter(date => date);
-  
-  if (dates.length === 0) return null;
-  
-  // Hitta tidigaste och senaste datum
-  let earliestDate = new Date(dates[0]);
-  let latestDate = new Date(dates[0]);
-  
-  dates.forEach(date => {
-    const currentDate = new Date(date);
-    if (!isNaN(currentDate.getTime())) {
-      if (currentDate < earliestDate) earliestDate = currentDate;
-      if (currentDate > latestDate) latestDate = currentDate;
-    }
-  });
-  
-  // Formatera datum
-  const formatDate = (date) => {
-    return date.toLocaleDateString('sv-SE', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
-  
-  return {
-    start: formatDate(earliestDate),
-    end: formatDate(latestDate)
-  };
+  return Array.from(accountNames).sort();
 }
 
 /**
  * Exportfunktioner för användning i komponenter
  */
-export { SUMMARIZABLE_COLUMNS, NON_SUMMARIZABLE_COLUMNS };
+export { SUMMARIZABLE_COLUMNS, NON_SUMMARIZABLE_COLUMNS, FIELD_ALIASES };

@@ -7,7 +7,7 @@
     --background: 210 36% 96%; /* Ljusgrå bakgrund */
     --foreground: 222.2 84% 4.9%; /* Mörk text */
     
-    --primary: 217 89% 61%; /* Meta blå */
+    --primary: 217 89% 61%; /* Facebook blå */
     --primary-foreground: 0 0% 100%; /* Vit text på blå bakgrund */
 
     --secondary: 216 33% 89%; /* Ljusblå/grå */
@@ -49,7 +49,7 @@
     @apply bg-white shadow-xl rounded-lg p-6 border border-gray-200;
   }
 
-  /* 📊 TABELLSTIL - Modern och ren Meta-inspirerad tabell */
+  /* 📊 TABELLSTIL - Modern och ren Facebook-inspirerad tabell */
   .table {
     @apply min-w-full bg-white shadow-md rounded-xl;
   }
@@ -138,4 +138,3 @@
     }
   }
 }
-

@@ -1,13 +1,12 @@
 {
-  "name": "facebook-statistics-web",
+  "name": "facebook-statistics-webapp",
   "version": "1.0.0",
   "description": "Facebook Statistics Web Application",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "deploy": "vite build && gh-pages -d dist"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.0.5",

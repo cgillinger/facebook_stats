@@ -7,19 +7,19 @@
       "fields": {
         "postId": {
           "required": true,
-          "aliases": ["Post ID", "Inläggs-ID", "PostID"],
+          "aliases": ["Publicerings-id", "Post ID", "Inläggs-ID", "PostID"],
           "type": "string",
           "description": "Unikt ID för inlägget"
         },
-        "pageId": {
+        "accountId": {
           "required": true,
-          "aliases": ["Page ID", "Sidans ID", "SidID"],
+          "aliases": ["Sid-id", "Account ID", "Konto-ID", "KontoID"],
           "type": "string",
           "description": "ID för Facebook-sidan"
         },
-        "pageName": {
+        "accountName": {
           "required": true,
-          "aliases": ["Page name", "Sidans namn", "Sidnamn"],
+          "aliases": ["Sidnamn", "Account name", "Kontonamn"],
           "type": "string",
           "description": "Namnet på Facebook-sidan"
         }
@@ -29,12 +29,12 @@
       "title": "Mätvärden",
       "description": "Grundläggande mätvärden för inlägg",
       "fields": {
-        "impressions": {
+        "views": {
           "required": true,
-          "aliases": ["Impressions"],
+          "aliases": ["Visningar", "Views"],
           "type": "number",
           "aggregationType": "sum",
-          "description": "Antal sidvisningar"
+          "description": "Antal visningar"
         }
       }
     },
@@ -42,19 +42,12 @@
       "title": "Räckvidd",
       "description": "Mätvärden för inläggets räckvidd",
       "fields": {
-        "totalReach": {
+        "reach": {
           "required": true,
-          "aliases": ["Reach", "Räckvidd", "Total räckvidd"],
+          "aliases": ["Räckvidd", "Reach"],
           "type": "number",
           "aggregationType": "max",
-          "description": "Total räckvidd för inlägget"
-        },
-        "organicReach": {
-          "required": true,
-          "aliases": ["Reach from Organic posts", "Räckvidd från organiska inlägg"],
-          "type": "number",
-          "aggregationType": "sum",
-          "description": "Räckvidd från obetalda inlägg"
+          "description": "Räckvidd för inlägget"
         }
       }
     },
@@ -62,22 +55,54 @@
       "title": "Engagemang",
       "description": "Mätvärden för användarengagemang",
       "fields": {
-        "totalEngagement": {
+        "total_engagement": {
           "required": true,
-          "aliases": [
-            "Reactions, Comments and Shares",
-            "Reaktioner, kommentarer och delningar"
-          ],
+          "aliases": ["Reaktioner, kommentarer och delningar", "Total engagement"],
           "type": "number",
           "aggregationType": "sum",
-          "description": "Totalt engagemang"
+          "description": "Totalt antal interaktioner"
         },
-        "reactions": {
+        "likes": {
           "required": true,
-          "aliases": ["Reactions", "Reaktioner"],
+          "aliases": ["Reaktioner", "Likes", "Gilla-markeringar"],
           "type": "number",
           "aggregationType": "sum",
           "description": "Antal reaktioner"
+        },
+        "comments": {
+          "required": true,
+          "aliases": ["Kommentarer", "Comments"],
+          "type": "number",
+          "aggregationType": "sum",
+          "description": "Antal kommentarer"
+        },
+        "shares": {
+          "required": true,
+          "aliases": ["Delningar", "Shares"],
+          "type": "number",
+          "aggregationType": "sum",
+          "description": "Antal delningar"
+        },
+        "total_clicks": {
+          "required": true,
+          "aliases": ["Totalt antal klick", "Total clicks"],
+          "type": "number",
+          "aggregationType": "sum",
+          "description": "Totalt antal klick"
+        },
+        "other_clicks": {
+          "required": true,
+          "aliases": ["Övriga klick", "Other clicks"],
+          "type": "number",
+          "aggregationType": "sum",
+          "description": "Antal övriga klick"
+        },
+        "link_clicks": {
+          "required": true,
+          "aliases": ["Länkklick", "Link clicks"],
+          "type": "number",
+          "aggregationType": "sum",
+          "description": "Antal klick på länkar"
         }
       }
     }

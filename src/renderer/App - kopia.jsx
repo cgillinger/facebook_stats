@@ -3,32 +3,13 @@ import { FileUploader } from "./components/FileUploader";
 import MainView from "./components/MainView";
 import { Alert, AlertDescription, AlertTitle } from "./components/ui/alert";
 import { InfoIcon, AlertTriangle } from "lucide-react";
-import { getMemoryUsageStats, clearAllData } from '@/utils/webStorageService';
+import { getMemoryUsageStats } from '@/utils/webStorageService';
 import { MEMORY_THRESHOLDS } from '@/utils/memoryUtils';
 
 function App() {
   const [processedData, setProcessedData] = useState(null);
   const [showFileUploader, setShowFileUploader] = useState(true);
   const [memoryWarning, setMemoryWarning] = useState(false);
-  const [isInitialized, setIsInitialized] = useState(false);
-  
-  // Rensa all befintlig data vid appstart
-  useEffect(() => {
-    const initializeApp = async () => {
-      try {
-        // Rensa alla lagrade data
-        await clearAllData();
-        console.log('Appen startad med ren datalagringsyta');
-      } catch (error) {
-        console.error('Fel vid rensning av data vid appstart:', error);
-      } finally {
-        // Markera appen som initialiserad oavsett om rensningen lyckades eller inte
-        setIsInitialized(true);
-      }
-    };
-    
-    initializeApp();
-  }, []); // Tom beroende-array = körs bara vid montering
   
   // Kontrollera minnesanvändning vid start
   useEffect(() => {
@@ -43,11 +24,8 @@ function App() {
       }
     };
     
-    // Kontrollera minnet bara om appen är initialiserad
-    if (isInitialized) {
-      checkMemory();
-    }
-  }, [isInitialized]);
+    checkMemory();
+  }, []);
   
   const handleDataProcessed = (data) => {
     setProcessedData(data);
@@ -79,17 +57,6 @@ function App() {
 
   // Kontrollera om det finns dublettinformation
   const hasDuplicateInfo = processedData?.meta?.stats?.duplicates > 0;
-
-  // Visa laddningsskärm tills appen är initialiserad
-  if (!isInitialized) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-lg text-muted-foreground">Startar Facebook Statistik...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background">
