@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { Card, CardContent } from '../ui/card';
-import { Checkbox } from '../ui/checkbox';
-import { Label } from '../ui/label';
-import { Button } from '../ui/button';
-import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
+import { Card, CardContent } from "../ui/card";
+import { Checkbox } from "../ui/checkbox";
+import { Label } from "../ui/label";
+import { Button } from "../ui/button";
+import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { 
   Settings, 
   CalendarIcon, 
@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import AccountView from '../AccountView';
 import PostView from '../PostView';
+import PostTypeView from '../PostTypeView/PostTypeView';
 import { FileUploader } from '../FileUploader';
 import { ColumnMappingEditor } from '../ColumnMappingEditor';
 import { MemoryIndicator } from '../MemoryIndicator/MemoryIndicator';
@@ -51,6 +52,19 @@ const ACCOUNT_VIEW_AVAILABLE_FIELDS = {
   'link_clicks': 'Länkklick',
   'post_count': 'Antal publiceringar',
   'posts_per_day': 'Publiceringar per dag'
+};
+
+// Definiera specifika fält för per-inläggstyp-vyn
+const POST_TYPE_VIEW_AVAILABLE_FIELDS = {
+  'views': 'Sidvisningar',
+  'reach': 'Räckvidd',
+  'total_engagement': 'Interaktioner',
+  'likes': 'Reaktioner',
+  'comments': 'Kommentarer',
+  'shares': 'Delningar',
+  'total_clicks': 'Totalt antal klick',
+  'other_clicks': 'Övriga klick',
+  'link_clicks': 'Länkklick'
 };
 
 // Bekräftelsedialog-komponent
@@ -113,7 +127,9 @@ const MainView = ({ data, meta, onDataProcessed }) => {
 
   // Hämta rätt fält baserat på aktiv vy
   const getAvailableFields = () => {
-    return activeView === 'account' ? ACCOUNT_VIEW_AVAILABLE_FIELDS : POST_VIEW_AVAILABLE_FIELDS;
+    if (activeView === 'account') return ACCOUNT_VIEW_AVAILABLE_FIELDS;
+    if (activeView === 'post_type') return POST_TYPE_VIEW_AVAILABLE_FIELDS;
+    return POST_VIEW_AVAILABLE_FIELDS;
   };
 
   // Ladda minnesanvändning och filmetadata
@@ -373,6 +389,7 @@ const MainView = ({ data, meta, onDataProcessed }) => {
         <TabsList>
           <TabsTrigger value="account">Per konto</TabsTrigger>
           <TabsTrigger value="post">Per inlägg</TabsTrigger>
+          <TabsTrigger value="post_type">Per inläggstyp</TabsTrigger>
         </TabsList>
 
         {hasDateRange && (
@@ -390,6 +407,10 @@ const MainView = ({ data, meta, onDataProcessed }) => {
 
         <TabsContent value="post">
           <PostView data={data} selectedFields={selectedFields} />
+        </TabsContent>
+
+        <TabsContent value="post_type">
+          <PostTypeView data={data} selectedFields={selectedFields} />
         </TabsContent>
       </Tabs>
     </div>
