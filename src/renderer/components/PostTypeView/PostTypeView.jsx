@@ -32,7 +32,7 @@ const COLORS = [
 
 // Function to calculate aggregate metrics by post type
 const aggregateByPostType = (data, selectedAccount = ALL_ACCOUNTS) => {
-  if (!data || !Array.isArray(data) || data.length === 0) return [];
+  if (!Array.isArray(data) || data.length === 0) return [];
   
   // Filter by account if specified
   const filteredData = selectedAccount === ALL_ACCOUNTS 
@@ -161,7 +161,6 @@ const PostTypeView = ({ data, selectedFields }) => {
   const [columnMappings, setColumnMappings] = useState({});
   const [aggregatedData, setAggregatedData] = useState([]);
   const [showOnlyReliable, setShowOnlyReliable] = useState(false);
-  const [showPerformanceIndex, setShowPerformanceIndex] = useState(false);
 
   // Load column mappings when component mounts
   useEffect(() => {
@@ -206,38 +205,7 @@ const PostTypeView = ({ data, selectedFields }) => {
   useEffect(() => {
     if (data && Array.isArray(data)) {
       const aggregated = aggregateByPostType(data, selectedAccount);
-      
-      // Calculate total metrics for comparison
-      const totalPosts = aggregated.reduce((sum, item) => sum + item.post_count, 0);
-      const totalMetrics = {};
-      
-      ['views', 'reach', 'total_engagement', 'likes', 'comments', 'shares', 'total_clicks', 'link_clicks', 'other_clicks'].forEach(metric => {
-        const weightedSum = aggregated.reduce((sum, item) => 
-          sum + (item[metric] || 0) * item.post_count, 0);
-        totalMetrics[metric] = totalPosts > 0 ? weightedSum / totalPosts : 0;
-      });
-      
-      // Add performance index (comparing to average)
-      const aggregatedWithPerformance = aggregated.map(item => {
-        const performance = {};
-        
-        ['views', 'reach', 'total_engagement', 'likes', 'comments', 'shares', 'total_clicks', 'link_clicks', 'other_clicks'].forEach(metric => {
-          const baseValue = totalMetrics[metric];
-          if (baseValue && baseValue > 0) {
-            // Calculate as percentage of average
-            performance[`${metric}_perf`] = (item[metric] / baseValue) * 100 - 100;
-          } else {
-            performance[`${metric}_perf`] = 0;
-          }
-        });
-        
-        return {
-          ...item,
-          ...performance
-        };
-      });
-      
-      setAggregatedData(aggregatedWithPerformance);
+      setAggregatedData(aggregated);
     }
   }, [data, selectedAccount]);
 
@@ -271,21 +239,6 @@ const PostTypeView = ({ data, selectedFields }) => {
   const formatPercentage = (value) => {
     if (value === null || value === undefined) return '-';
     return `${value.toFixed(1)}%`;
-  };
-
-  // Helper to get performance class based on value
-  const getPerformanceClass = (value) => {
-    if (value === null || value === undefined) return '';
-    if (value > 10) return 'text-green-600 font-semibold';
-    if (value < -10) return 'text-red-600 font-semibold';
-    return 'text-gray-600';
-  };
-
-  // Format performance indicator
-  const formatPerformance = (value) => {
-    if (value === null || value === undefined) return '-';
-    const prefix = value > 0 ? '+' : '';
-    return `${prefix}${value.toFixed(1)}%`;
   };
 
   // Get pie chart data
@@ -388,10 +341,6 @@ const PostTypeView = ({ data, selectedFields }) => {
       for (const field of selectedFields) {
         if (['views', 'reach', 'total_engagement', 'likes', 'comments', 'shares', 'total_clicks', 'link_clicks', 'other_clicks'].includes(field)) {
           exportRow[getDisplayName(field)] = formatValue(item[field]);
-          
-          if (showPerformanceIndex) {
-            exportRow[`${getDisplayName(field)} (jmf)`] = formatPerformance(item[`${field}_perf`]);
-          }
         }
       }
 
@@ -434,27 +383,15 @@ const PostTypeView = ({ data, selectedFields }) => {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-6">
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="reliable-stats"
-                  checked={showOnlyReliable}
-                  onCheckedChange={setShowOnlyReliable}
-                />
-                <Label htmlFor="reliable-stats">
-                  Visa endast tillförlitlig data (≥{MIN_POSTS_FOR_RELIABLE_STATS} inlägg)
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="performance-index"
-                  checked={showPerformanceIndex}
-                  onCheckedChange={setShowPerformanceIndex}
-                />
-                <Label htmlFor="performance-index">
-                  Visa jämförelseindex
-                </Label>
-              </div>
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="reliable-stats"
+                checked={showOnlyReliable}
+                onCheckedChange={setShowOnlyReliable}
+              />
+              <Label htmlFor="reliable-stats">
+                Visa endast tillförlitlig data (≥{MIN_POSTS_FOR_RELIABLE_STATS} inlägg)
+              </Label>
             </div>
           </div>
           <div className="flex space-x-2">
@@ -525,26 +462,15 @@ const PostTypeView = ({ data, selectedFields }) => {
                   }
                   
                   return (
-                    <React.Fragment key={field}>
-                      <TableHead 
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => handleSort(field)}
-                      >
-                        <div className="flex items-center whitespace-nowrap">
-                          Genomsnitt: {getDisplayName(field)} {getSortIcon(field)}
-                        </div>
-                      </TableHead>
-                      {showPerformanceIndex && (
-                        <TableHead 
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => handleSort(`${field}_perf`)}
-                        >
-                          <div className="flex items-center whitespace-nowrap">
-                            Jmf {getSortIcon(`${field}_perf`)}
-                          </div>
-                        </TableHead>
-                      )}
-                    </React.Fragment>
+                    <TableHead 
+                      key={field}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleSort(field)}
+                    >
+                      <div className="flex items-center whitespace-nowrap">
+                        Genomsnitt: {getDisplayName(field)} {getSortIcon(field)}
+                      </div>
+                    </TableHead>
                   );
                 })}
               </TableRow>
@@ -552,7 +478,7 @@ const PostTypeView = ({ data, selectedFields }) => {
             <TableBody>
               {paginatedData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={3 + selectedFields.length + (showPerformanceIndex ? selectedFields.length : 0)} className="text-center py-6">
+                  <TableCell colSpan={3 + selectedFields.length} className="text-center py-6">
                     Ingen data tillgänglig
                   </TableCell>
                 </TableRow>
@@ -580,16 +506,9 @@ const PostTypeView = ({ data, selectedFields }) => {
                       }
                       
                       return (
-                        <React.Fragment key={field}>
-                          <TableCell className="text-right">
-                            {formatValue(item[field])}
-                          </TableCell>
-                          {showPerformanceIndex && (
-                            <TableCell className={`text-right ${getPerformanceClass(item[`${field}_perf`])}`}>
-                              {formatPerformance(item[`${field}_perf`])}
-                            </TableCell>
-                          )}
-                        </React.Fragment>
+                        <TableCell key={field} className="text-right">
+                          {formatValue(item[field])}
+                        </TableCell>
                       );
                     })}
                   </TableRow>
@@ -606,12 +525,6 @@ const PostTypeView = ({ data, selectedFields }) => {
                 Inläggstyper med färre än {MIN_POSTS_FOR_RELIABLE_STATS} inlägg markeras med en gul cirkel och kan ha mindre tillförlitlig statistik.
               </span>
             </div>
-            {showPerformanceIndex && (
-              <div className="py-2 text-sm text-muted-foreground">
-                <span className="text-green-600 font-semibold">+10.0%</span> betyder 10% bättre än genomsnittet. 
-                <span className="text-red-600 font-semibold ml-2">-10.0%</span> betyder 10% sämre än genomsnittet.
-              </div>
-            )}
           </div>
 
           <div className="flex items-center justify-between p-4 border-t">

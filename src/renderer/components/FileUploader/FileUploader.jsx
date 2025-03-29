@@ -10,7 +10,8 @@ import {
   AlertCircle,
   PlusCircle,
   HardDrive,
-  Info
+  Info,
+  FileText
 } from 'lucide-react';
 import { handleFileUpload, getMemoryUsageStats, clearAllData, getUploadedFilesMetadata } from '@/utils/webStorageService';
 import { processPostData, analyzeCSVFile } from '@/utils/webDataProcessor';
@@ -31,6 +32,7 @@ export function FileUploader({ onDataProcessed, onCancel, existingData = null, i
   const [memoryCheck, setMemoryCheck] = useState({ canAddFile: true, status: 'safe' });
   const [existingFiles, setExistingFiles] = useState([]);
   const [possibleDuplicate, setPossibleDuplicate] = useState(null);
+  const [estimatedFilesRemaining, setEstimatedFilesRemaining] = useState(null);
   const fileInputRef = useRef(null);
   const { columnMappings, validateColumns, missingColumns } = useColumnMapper();
 
@@ -40,6 +42,7 @@ export function FileUploader({ onDataProcessed, onCancel, existingData = null, i
       try {
         const stats = await getMemoryUsageStats();
         setMemoryUsage(stats);
+        setEstimatedFilesRemaining(stats.estimatedAdditionalFiles || 0);
         
         // Hämta befintliga filer för att kontrollera dubletter
         const files = await getUploadedFilesMetadata();
@@ -100,6 +103,9 @@ export function FileUploader({ onDataProcessed, onCancel, existingData = null, i
           if (projection.status === 'critical') {
             setError('Varning: Minnesanvändningen kommer vara kritisk om denna fil läses in. Rensa data först.');
           }
+          
+          // Uppdatera uppskattningen av återstående filer
+          setEstimatedFilesRemaining(projection.estimatedRemainingFiles || 0);
         }
         
         setIsLoading(false);
@@ -276,6 +282,7 @@ export function FileUploader({ onDataProcessed, onCancel, existingData = null, i
           if (memoryUsage) {
             const projection = calculateMemoryWithNewFile(analysis, memoryUsage);
             setMemoryCheck(projection);
+            setEstimatedFilesRemaining(projection.estimatedRemainingFiles || 0);
           }
           
           setIsLoading(false);
@@ -301,11 +308,17 @@ export function FileUploader({ onDataProcessed, onCancel, existingData = null, i
 
   const handleMemoryUpdate = (stats) => {
     setMemoryUsage(stats);
+    setEstimatedFilesRemaining(stats.estimatedAdditionalFiles || 0);
     
     // Uppdatera minnesprojektion om det finns en fil
     if (fileAnalysis) {
       const projection = calculateMemoryWithNewFile(fileAnalysis, stats);
       setMemoryCheck(projection);
+      
+      // Uppdatera uppskattningen av återstående filer efter denna fil
+      if (projection && typeof projection.estimatedRemainingFiles !== 'undefined') {
+        setEstimatedFilesRemaining(projection.estimatedRemainingFiles);
+      }
     }
   };
   
@@ -432,8 +445,15 @@ export function FileUploader({ onDataProcessed, onCancel, existingData = null, i
               <AlertCircle className="h-4 w-4 text-yellow-600" />
               <AlertTitle className="text-yellow-800">Minnesvarning</AlertTitle>
               <AlertDescription className="text-yellow-700">
-                Att lägga till denna fil kommer använda {memoryCheck.projectedPercent}% av tillgängligt minne.
-                Det kan påverka prestandan negativt.
+                <div className="space-y-1">
+                  <p>Att lägga till denna fil kommer använda {memoryCheck.projectedPercent}% av tillgängligt minne.</p>
+                  
+                  {file && estimatedFilesRemaining !== null && (
+                    <p className="font-medium">
+                      Efter denna fil kommer du kunna lägga till ungefär {estimatedFilesRemaining} file{estimatedFilesRemaining !== 1 ? 'r' : ''} till.
+                    </p>
+                  )}
+                </div>
               </AlertDescription>
             </Alert>
           )}
@@ -472,7 +492,7 @@ export function FileUploader({ onDataProcessed, onCancel, existingData = null, i
               {!isNewAnalysis && memoryCheck.status === 'critical' && !memoryCheck.canAddFile ? (
                 <AlertCircle className="w-12 h-12 text-red-500" />
               ) : file ? (
-                <FileWarning className="w-12 h-12 text-primary" />
+                <FileText className="w-12 h-12 text-primary" />
               ) : existingData && !isNewAnalysis ? (
                 <PlusCircle className="w-12 h-12 text-muted-foreground" />
               ) : (
@@ -503,6 +523,13 @@ export function FileUploader({ onDataProcessed, onCancel, existingData = null, i
                   <div className="mt-2 text-sm text-primary">
                     <p>Filen innehåller {fileAnalysis.rows} rader och {fileAnalysis.columns} kolumner</p>
                     <p>Filstorlek: {(fileAnalysis.fileSize / 1024).toFixed(0)} KB</p>
+                    
+                    {/* Ny sektion för uppskattning av återstående kapacitet */}
+                    {!isNewAnalysis && estimatedFilesRemaining !== null && (
+                      <p className="mt-1 font-medium">
+                        Efter denna fil kommer du kunna lägga till ungefär {estimatedFilesRemaining} file{estimatedFilesRemaining !== 1 ? 'r' : ''} till
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

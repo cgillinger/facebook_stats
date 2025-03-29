@@ -1,7 +1,7 @@
 /**
  * Memory Utilities
  * 
- * Verktyg för att övervaka och hantera minneanvändning i webbläsaren
+ * Verktyg för att övervaka och hantera minnesanvändning i webbläsaren
  * när appen hanterar flera CSV-filer.
  */
 
@@ -11,10 +11,11 @@ export const MEMORY_THRESHOLDS = {
   CRITICAL: 90  // 90% av tillgängligt minne
 };
 
-// Standardvärden för lagringsstorlekar
+// Standardvärden för lagringsstorlekar - uppskattningar baserade på typiska webbläsare
 const STORAGE_LIMITS = {
   LOCALSTORAGE: 5 * 1024 * 1024, // 5MB typisk localStorage-gräns
-  INDEXEDDB: 200 * 1024 * 1024   // 200MB konservativ uppskattning för IndexedDB
+  INDEXEDDB: 200 * 1024 * 1024,  // 200MB konservativ uppskattning för IndexedDB
+  UNIFIED: 205 * 1024 * 1024     // 205MB total kapacitet (5MB för localStorage + 200MB för IndexedDB)
 };
 
 /**
@@ -62,14 +63,10 @@ export function calculateMemoryUsage(fileMetadataList, postViewData, accountView
   // Total datamängd i bytes
   const totalDataSize = postViewSize + accountViewSize + metadataSize;
   
-  // Uppskattad procent av localStorage använt (max 5MB)
-  const localStoragePercent = Math.min(100, (accountViewSize / STORAGE_LIMITS.LOCALSTORAGE) * 100);
-  
-  // Uppskattad procent av IndexedDB använt (baserat på postViewData)
-  const indexedDBPercent = Math.min(100, (postViewSize / STORAGE_LIMITS.INDEXEDDB) * 100);
-  
-  // Beräkna total procent (viktat genomsnitt baserat på var data lagras)
-  const totalPercent = Math.max(localStoragePercent, indexedDBPercent);
+  // Beräkna procent av total tillgänglig lagringskapacitet
+  // I stället för att visa separata procentandelar för localStorage och IndexedDB
+  // visar vi en enda procent som representerar total minnesanvändning
+  const totalPercent = Math.min(100, (totalDataSize / STORAGE_LIMITS.UNIFIED) * 100);
   
   // Fastställ status baserat på tröskelvärden
   let status = 'safe';
@@ -79,16 +76,69 @@ export function calculateMemoryUsage(fileMetadataList, postViewData, accountView
     status = 'warning';
   }
   
+  // Beräkna ungefärlig återstående kapacitet
+  const remainingBytes = STORAGE_LIMITS.UNIFIED - totalDataSize;
+  const remainingMB = remainingBytes / (1024 * 1024);
+  
+  // Beräkna uppskattning av hur många fler filer som kan laddas
+  const filesInfo = estimateAdditionalFileCapacity(fileMetadataList, remainingBytes);
+  
   return {
     totalSize: totalDataSize,
     totalSizeMB: (totalDataSize / (1024 * 1024)).toFixed(2),
+    remainingMB: remainingMB.toFixed(2),
     postViewSize,
     accountViewSize,
     metadataSize,
     percentUsed: totalPercent.toFixed(1),
     status,
     canAddMoreData: totalPercent < MEMORY_THRESHOLDS.CRITICAL,
-    isNearLimit: totalPercent >= MEMORY_THRESHOLDS.WARNING
+    isNearLimit: totalPercent >= MEMORY_THRESHOLDS.WARNING,
+    estimatedAdditionalFiles: filesInfo.estimatedAdditionalFiles,
+    averageFileSizeKB: filesInfo.averageFileSizeKB
+  };
+}
+
+/**
+ * Uppskattar hur många fler liknande filer som kan läggas till
+ * @param {Array} fileMetadataList - Lista med info om uppladdade filer
+ * @param {number} remainingBytes - Återstående byte tillgängliga
+ * @returns {Object} - Information om uppskattad kapacitet
+ */
+function estimateAdditionalFileCapacity(fileMetadataList, remainingBytes) {
+  // Om det inte finns några filer ännu, anta en standardstorlek per fil
+  if (!fileMetadataList || fileMetadataList.length === 0) {
+    // Anta 500KB som standardstorlek för en fil om ingen fil finns
+    const defaultFileSizeKB = 500;
+    const estimatedAdditionalFiles = Math.floor(remainingBytes / (defaultFileSizeKB * 1024));
+    return {
+      estimatedAdditionalFiles: Math.max(0, estimatedAdditionalFiles),
+      averageFileSizeKB: defaultFileSizeKB
+    };
+  }
+  
+  // Beräkna genomsnittlig filstorlek från befintliga filer
+  let totalRows = 0;
+  for (const file of fileMetadataList) {
+    totalRows += (file.rowCount || 0);
+  }
+  
+  // Uppskatta storlek per rad (använd en konservativ uppskattning)
+  // Anta att varje inlägg använder cirka 1-2KB data (med alla fält och bearbetning)
+  const bytesPerRow = 1500; // 1.5KB per rad i genomsnitt
+  const totalEstimatedBytes = totalRows * bytesPerRow;
+  
+  // Beräkna genomsnittlig filstorlek
+  const averageFileSize = fileMetadataList.length > 0 
+    ? totalEstimatedBytes / fileMetadataList.length 
+    : 500 * 1024; // Anta 500KB om inga filer finns
+  
+  // Beräkna hur många fler filer som kan läggas till
+  const estimatedAdditionalFiles = Math.floor(remainingBytes / averageFileSize);
+  
+  return {
+    estimatedAdditionalFiles: Math.max(0, estimatedAdditionalFiles),
+    averageFileSizeKB: Math.round(averageFileSize / 1024)
   };
 }
 
@@ -123,10 +173,12 @@ export function estimateAvailableCapacity() {
     console.warn('Kunde inte testa localStorage-kapacitet:', e);
   }
   
+  // Returnera en kombinerad uppskattning av tillgänglig lagringskapacitet
+  const totalAvailable = localStorageAvailable + STORAGE_LIMITS.INDEXEDDB;
+  
   return {
-    localStorageAvailable: localStorageAvailable || STORAGE_LIMITS.LOCALSTORAGE,
-    indexedDBAvailable: STORAGE_LIMITS.INDEXEDDB,
-    totalAvailableMB: ((localStorageAvailable + STORAGE_LIMITS.INDEXEDDB) / (1024 * 1024)).toFixed(2)
+    totalAvailableBytes: totalAvailable,
+    totalAvailableMB: (totalAvailable / (1024 * 1024)).toFixed(2)
   };
 }
 
@@ -166,7 +218,7 @@ export function calculateMemoryWithNewFile(newFileStats, currentMemoryUsage) {
   
   // Beräkna procent av tillgängligt minne
   const capacity = estimateAvailableCapacity();
-  const totalCapacity = parseFloat(capacity.localStorageAvailable) + parseFloat(capacity.indexedDBAvailable);
+  const totalCapacity = capacity.totalAvailableBytes;
   const projectedPercent = (projectedSize / totalCapacity) * 100;
   
   // Fastställ status
@@ -177,6 +229,13 @@ export function calculateMemoryWithNewFile(newFileStats, currentMemoryUsage) {
     status = 'warning';
   }
   
+  // Beräkna uppskattad påverkan på antalet ytterligare filer som kan laddas
+  const remainingAfterNewFile = totalCapacity - projectedSize;
+  const filesInfo = estimateAdditionalFileCapacity(
+    currentMemoryUsage.filesMetadata || [], 
+    remainingAfterNewFile
+  );
+  
   return {
     currentSize,
     estimatedNewSize,
@@ -184,6 +243,7 @@ export function calculateMemoryWithNewFile(newFileStats, currentMemoryUsage) {
     projectedSizeMB: (projectedSize / (1024 * 1024)).toFixed(2),
     projectedPercent: projectedPercent.toFixed(1),
     status,
-    canAddFile: projectedPercent < MEMORY_THRESHOLDS.CRITICAL
+    canAddFile: projectedPercent < MEMORY_THRESHOLDS.CRITICAL,
+    estimatedRemainingFiles: filesInfo.estimatedAdditionalFiles
   };
 }
