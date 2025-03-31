@@ -41,6 +41,72 @@ const PAGE_SIZE_OPTIONS = [
   { value: '50', label: '50 per sida' }
 ];
 
+// Kanaler och deras respektive färger enligt SR:s branding
+const CHANNEL_COLORS = {
+  'P1': '#0066cc', // Blå
+  'P2': '#ff6600', // Orange
+  'P3': '#00cc66', // Grön
+  'P4': '#cc33cc', // Magenta/Lila
+  'EKOT': '#005eb8', // Mörk blå (Ekot/Radio Sweden)
+  'RADIOSPORTEN': '#1c5c35', // Mörk grön (Radiosporten)
+  'SR': '#000000',  // Svart för Sveriges Radio
+  'default': '#000000' // Svart som fallback
+};
+
+// Funktionskomponent för profilikon med första bokstaven
+const ProfileIcon = ({ accountName }) => {
+  // Extrahera första bokstaven från kontonamnet
+  const name = accountName || 'Okänd';
+  const firstLetter = name.charAt(0).toUpperCase();
+  
+  // Bestäm färg baserat på kanalnamn i kontonamnet
+  let backgroundColor = CHANNEL_COLORS.default;
+  let channel = '';
+  
+  // Kontrollera om kontonamnet innehåller något av kanalnamnen
+  const nameLower = name.toLowerCase();
+  
+  if (nameLower.includes('ekot') || nameLower.includes('radio sweden')) {
+    backgroundColor = CHANNEL_COLORS.EKOT;
+    channel = 'E';
+  } else if (nameLower.includes('radiosporten') || nameLower.includes('radio sporten')) {
+    backgroundColor = CHANNEL_COLORS.RADIOSPORTEN;
+    channel = 'RS';
+  } else if (nameLower.includes('p1')) {
+    backgroundColor = CHANNEL_COLORS.P1;
+    channel = 'P1';
+  } else if (nameLower.includes('p2')) {
+    backgroundColor = CHANNEL_COLORS.P2;
+    channel = 'P2';
+  } else if (nameLower.includes('p3')) {
+    backgroundColor = CHANNEL_COLORS.P3;
+    channel = 'P3';
+  } else if (nameLower.includes('p4')) {
+    backgroundColor = CHANNEL_COLORS.P4;
+    channel = 'P4';
+  } else if (nameLower.includes('sveriges radio') && !nameLower.includes('p1') && 
+            !nameLower.includes('p2') && !nameLower.includes('p3') && !nameLower.includes('p4')) {
+    // Sveriges Radio, men inte specifik kanal
+    backgroundColor = CHANNEL_COLORS.SR;
+    channel = 'SR';
+  }
+  
+  // Bestäm textfärg baserat på bakgrundsfärgen (ljus bakgrund = mörk text)
+  const textColor = 'text-white'; // Alla bakgrunder är tillräckligt mörka för vit text
+  
+  // Använd kanalprefix om det finns en matchning
+  const displayLetter = channel || firstLetter;
+  
+  return (
+    <div 
+      className={`flex-shrink-0 w-6 h-6 rounded-sm flex items-center justify-center text-xs font-bold ${textColor}`}
+      style={{ backgroundColor }}
+    >
+      {displayLetter}
+    </div>
+  );
+};
+
 // Funktion för att summera värden per konto (synkron version)
 const summarizeByAccount = (data, selectedFields, columnMappings) => {
   if (!Array.isArray(data) || data.length === 0 || !selectedFields) {
@@ -530,34 +596,42 @@ const AccountView = ({ data, selectedFields }) => {
             </TableRow>
 
             {/* Datarader */}
-            {paginatedData.map((account, index) => (
-              <TableRow key={`${getValue(account, 'account_id')}-${getValue(account, 'account_name')}`}>
-                {/* Visa radnummer i stigande ordning */}
-                <TableCell className="text-center font-medium">
-                  {(currentPage - 1) * pageSize + index + 1}
-                </TableCell>
-                <TableCell className="font-medium">
-                  {getValue(account, 'account_name') || 'Unknown'}
-                </TableCell>
-                {selectedFields.map((field) => (
-                  <TableCell key={field} className="text-right">
-                    {formatValue(getValue(account, field))}
+            {paginatedData.map((account, index) => {
+              const accountId = getValue(account, 'account_id');
+              const accountName = getValue(account, 'account_name');
+              
+              return (
+                <TableRow key={`${accountId}-${accountName}`}>
+                  {/* Visa radnummer i stigande ordning */}
+                  <TableCell className="text-center font-medium">
+                    {(currentPage - 1) * pageSize + index + 1}
                   </TableCell>
-                ))}
-                <TableCell className="text-center">
-                  {getValue(account, 'account_id') && (
-                    <button
-                      onClick={() => handleExternalLink(getValue(account, 'account_id'))}
-                      className="inline-flex items-center justify-center text-blue-600 hover:text-blue-800"
-                      title="Öppna i webbläsare"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                      <span className="sr-only">Öppna Facebook-sida</span>
-                    </button>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
+                  <TableCell className="font-medium">
+                    <div className="flex items-center space-x-2">
+                      <ProfileIcon accountName={accountName} />
+                      <span>{accountName || 'Unknown'}</span>
+                    </div>
+                  </TableCell>
+                  {selectedFields.map((field) => (
+                    <TableCell key={field} className="text-right">
+                      {formatValue(getValue(account, field))}
+                    </TableCell>
+                  ))}
+                  <TableCell className="text-center">
+                    {accountId && (
+                      <button
+                        onClick={() => handleExternalLink(accountId)}
+                        className="inline-flex items-center justify-center text-blue-600 hover:text-blue-800"
+                        title="Öppna i webbläsare"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        <span className="sr-only">Öppna Facebook-sida</span>
+                      </button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
 
