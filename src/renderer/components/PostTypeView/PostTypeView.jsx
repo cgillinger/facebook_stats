@@ -426,7 +426,7 @@ const PostTypeView = ({ data, selectedFields }) => {
           </div>
         )}
 
-        <div className="rounded-md overflow-x-auto border">
+        <div className="rounded-md overflow-x-auto border bg-white">
           <Table>
             <TableHeader>
               <TableRow>
