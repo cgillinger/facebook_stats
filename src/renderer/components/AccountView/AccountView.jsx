@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '../ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
-import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileDown, FileSpreadsheet, Calculator, ExternalLink } from 'lucide-react';
+import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileDown, FileSpreadsheet, Calculator, ExternalLink, Copy, Check } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Button } from '../ui/button';
 import { 
@@ -256,6 +256,7 @@ const AccountView = ({ data, selectedFields }) => {
   const [summaryData, setSummaryData] = useState([]);
   const [totalSummary, setTotalSummary] = useState({});
   const [isLoading, setIsLoading] = useState(true);
+  const [copyStatus, setCopyStatus] = useState({ field: null, copied: false });
 
   // Ladda kolumnmappningar när komponenten monteras
   useEffect(() => {
@@ -362,6 +363,33 @@ const AccountView = ({ data, selectedFields }) => {
   useEffect(() => {
     setCurrentPage(1);
   }, [data, pageSize]);
+
+  // Återställ kopieringsstatus efter 1,5 sekunder
+  useEffect(() => {
+    if (copyStatus.copied) {
+      const timer = setTimeout(() => {
+        setCopyStatus({ field: null, copied: false });
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [copyStatus]);
+
+  // Hantera kopiera till urklipp
+  const handleCopyValue = useCallback((value, field) => {
+    if (value === undefined || value === null) return;
+    
+    // Konvertera till sträng och se till att formatering tas bort
+    const rawValue = String(value).replace(/\s+/g, '').replace(/\D/g, '');
+    
+    navigator.clipboard.writeText(rawValue)
+      .then(() => {
+        setCopyStatus({ field, copied: true });
+        console.log(`Kopierade ${rawValue} till urklipp`);
+      })
+      .catch(err => {
+        console.error('Kunde inte kopiera till urklipp:', err);
+      });
+  }, []);
 
   // Hantera sortering av kolumner
   const handleSort = (key) => {
@@ -492,6 +520,27 @@ const AccountView = ({ data, selectedFields }) => {
     });
   };
 
+  // Kopieringsikon-komponent med hover-effekt och tooltip
+  const CopyButton = ({ value, field }) => {
+    const isCopied = copyStatus.copied && copyStatus.field === field;
+    return (
+      <button
+        onClick={(e) => {
+          e.stopPropagation(); // Förhindra att sortering triggas
+          handleCopyValue(value, field);
+        }}
+        className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 hover:text-primary"
+        title="Kopiera till urklipp"
+      >
+        {isCopied ? (
+          <Check className="h-4 w-4 text-green-500" />
+        ) : (
+          <Copy className="h-4 w-4" />
+        )}
+      </button>
+    );
+  };
+
   // Om inga fält är valda, visa meddelande
   if (selectedFields.length === 0) {
     return (
@@ -586,9 +635,14 @@ const AccountView = ({ data, selectedFields }) => {
               </TableCell>
               {selectedFields.map((field) => (
                 <TableCell key={field} className="text-right font-semibold text-primary">
-                  {!FIELDS_WITHOUT_TOTALS.includes(field) 
-                    ? formatValue(totalSummary[field]) 
-                    : ''}
+                  {!FIELDS_WITHOUT_TOTALS.includes(field) ? (
+                    <div className="flex items-center justify-end group">
+                      <span>{formatValue(totalSummary[field])}</span>
+                      <CopyButton value={totalSummary[field]} field={field} />
+                    </div>
+                  ) : (
+                    ''
+                  )}
                 </TableCell>
               ))}
               {/* Tomt utrymme för länkkolumnen i totalsumma-raden */}
