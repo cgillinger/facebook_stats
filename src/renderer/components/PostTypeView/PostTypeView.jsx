@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card } from '../ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
-import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileDown, FileSpreadsheet, AlertCircle, PieChart as PieChartIcon } from 'lucide-react';
+import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileDown, FileSpreadsheet, AlertCircle, PieChart as PieChartIcon, Copy, Check } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Button } from '../ui/button';
 import { Switch } from '../ui/switch';
@@ -161,6 +161,7 @@ const PostTypeView = ({ data, selectedFields }) => {
   const [columnMappings, setColumnMappings] = useState({});
   const [aggregatedData, setAggregatedData] = useState([]);
   const [showOnlyReliable, setShowOnlyReliable] = useState(false);
+  const [copyStatus, setCopyStatus] = useState({ field: null, rowId: null, copied: false });
 
   // Load column mappings when component mounts
   useEffect(() => {
@@ -213,6 +214,16 @@ const PostTypeView = ({ data, selectedFields }) => {
   useEffect(() => {
     setCurrentPage(1);
   }, [data, pageSize, selectedAccount]);
+  
+  // Återställ kopieringsstatus efter 1,5 sekunder
+  useEffect(() => {
+    if (copyStatus.copied) {
+      const timer = setTimeout(() => {
+        setCopyStatus({ field: null, rowId: null, copied: false });
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [copyStatus]);
 
   // Handle sorting of columns
   const handleSort = (key) => {
@@ -220,6 +231,35 @@ const PostTypeView = ({ data, selectedFields }) => {
       key,
       direction: currentSort.key === key && currentSort.direction === 'asc' ? 'desc' : 'asc'
     }));
+  };
+  
+  // Hantera kopiera till urklipp
+  const handleCopyValue = (value, field, rowId) => {
+    if (value === undefined || value === null) return;
+    
+    // Konvertera till sträng och se till att formatering tas bort
+    // För procentvärden, behåll decimaltecken
+    let rawValue;
+    
+    if (field === 'percentage') {
+      // För procentvärden, behåll decimaltecken men ta bort %-tecken
+      rawValue = String(value.toFixed(1));
+    } else if (typeof value === 'number' || (typeof value === 'string' && !isNaN(value.replace(/\s+/g, '')))) {
+      // För andra numeriska värden, ta bort alla icke-siffror
+      rawValue = String(value).replace(/\s+/g, '').replace(/\D/g, '');
+    } else {
+      // För icke-numeriska värden, behåll texten som den är
+      rawValue = String(value);
+    }
+    
+    navigator.clipboard.writeText(rawValue)
+      .then(() => {
+        setCopyStatus({ field, rowId, copied: true });
+        console.log(`Kopierade ${rawValue} till urklipp`);
+      })
+      .catch(err => {
+        console.error('Kunde inte kopiera till urklipp:', err);
+      });
   };
 
   // Get icon for sorting
@@ -251,6 +291,33 @@ const PostTypeView = ({ data, selectedFields }) => {
         value: item.post_count,
         percentage: item.percentage
       }));
+  };
+  
+  // Kopieringsikon-komponent med hover-effekt och tooltip
+  const CopyButton = ({ value, field, rowId }) => {
+    const isCopied = copyStatus.copied && copyStatus.field === field && copyStatus.rowId === rowId;
+    
+    // Visa inte kopieringsknapp för tomma värden eller null/undefined
+    if (value === undefined || value === null || value === '' || value === '-') {
+      return null;
+    }
+    
+    return (
+      <button
+        onClick={(e) => {
+          e.stopPropagation(); // Förhindra att sortering triggas
+          handleCopyValue(value, field, rowId);
+        }}
+        className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 hover:text-primary"
+        title="Kopiera till urklipp"
+      >
+        {isCopied ? (
+          <Check className="h-4 w-4 text-green-500" />
+        ) : (
+          <Copy className="h-4 w-4" />
+        )}
+      </button>
+    );
   };
 
   // Apply filtering based on user settings
@@ -496,8 +563,26 @@ const PostTypeView = ({ data, selectedFields }) => {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right">{item.post_count}</TableCell>
-                    <TableCell className="text-right">{formatPercentage(item.percentage)}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end group">
+                        <span>{item.post_count}</span>
+                        <CopyButton 
+                          value={item.post_count} 
+                          field="post_count" 
+                          rowId={`${item.post_type}-${index}`} 
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end group">
+                        <span>{formatPercentage(item.percentage)}</span>
+                        <CopyButton 
+                          value={item.percentage} 
+                          field="percentage" 
+                          rowId={`${item.post_type}-${index}`} 
+                        />
+                      </div>
+                    </TableCell>
                     
                     {selectedFields.map(field => {
                       // Only show selected metrics
@@ -507,7 +592,14 @@ const PostTypeView = ({ data, selectedFields }) => {
                       
                       return (
                         <TableCell key={field} className="text-right">
-                          {formatValue(item[field])}
+                          <div className="flex items-center justify-end group">
+                            <span>{formatValue(item[field])}</span>
+                            <CopyButton 
+                              value={item[field]} 
+                              field={field} 
+                              rowId={`${item.post_type}-${index}`} 
+                            />
+                          </div>
                         </TableCell>
                       );
                     })}

@@ -256,7 +256,7 @@ const AccountView = ({ data, selectedFields }) => {
   const [summaryData, setSummaryData] = useState([]);
   const [totalSummary, setTotalSummary] = useState({});
   const [isLoading, setIsLoading] = useState(true);
-  const [copyStatus, setCopyStatus] = useState({ field: null, copied: false });
+  const [copyStatus, setCopyStatus] = useState({ field: null, rowId: null, copied: false });
 
   // Ladda kolumnmappningar när komponenten monteras
   useEffect(() => {
@@ -368,14 +368,14 @@ const AccountView = ({ data, selectedFields }) => {
   useEffect(() => {
     if (copyStatus.copied) {
       const timer = setTimeout(() => {
-        setCopyStatus({ field: null, copied: false });
+        setCopyStatus({ field: null, rowId: null, copied: false });
       }, 1500);
       return () => clearTimeout(timer);
     }
   }, [copyStatus]);
 
   // Hantera kopiera till urklipp
-  const handleCopyValue = useCallback((value, field) => {
+  const handleCopyValue = useCallback((value, field, rowId = 'total') => {
     if (value === undefined || value === null) return;
     
     // Konvertera till sträng och se till att formatering tas bort
@@ -383,7 +383,7 @@ const AccountView = ({ data, selectedFields }) => {
     
     navigator.clipboard.writeText(rawValue)
       .then(() => {
-        setCopyStatus({ field, copied: true });
+        setCopyStatus({ field, rowId, copied: true });
         console.log(`Kopierade ${rawValue} till urklipp`);
       })
       .catch(err => {
@@ -521,13 +521,13 @@ const AccountView = ({ data, selectedFields }) => {
   };
 
   // Kopieringsikon-komponent med hover-effekt och tooltip
-  const CopyButton = ({ value, field }) => {
-    const isCopied = copyStatus.copied && copyStatus.field === field;
+  const CopyButton = ({ value, field, rowId = 'total' }) => {
+    const isCopied = copyStatus.copied && copyStatus.field === field && copyStatus.rowId === rowId;
     return (
       <button
         onClick={(e) => {
           e.stopPropagation(); // Förhindra att sortering triggas
-          handleCopyValue(value, field);
+          handleCopyValue(value, field, rowId);
         }}
         className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 hover:text-primary"
         title="Kopiera till urklipp"
@@ -638,7 +638,7 @@ const AccountView = ({ data, selectedFields }) => {
                   {!FIELDS_WITHOUT_TOTALS.includes(field) ? (
                     <div className="flex items-center justify-end group">
                       <span>{formatValue(totalSummary[field])}</span>
-                      <CopyButton value={totalSummary[field]} field={field} />
+                      <CopyButton value={totalSummary[field]} field={field} rowId="total" />
                     </div>
                   ) : (
                     ''
@@ -668,7 +668,14 @@ const AccountView = ({ data, selectedFields }) => {
                   </TableCell>
                   {selectedFields.map((field) => (
                     <TableCell key={field} className="text-right">
-                      {formatValue(getValue(account, field))}
+                      <div className="flex items-center justify-end group">
+                        <span>{formatValue(getValue(account, field))}</span>
+                        <CopyButton 
+                          value={getValue(account, field)} 
+                          field={field} 
+                          rowId={`${accountId}-${field}`} 
+                        />
+                      </div>
                     </TableCell>
                   ))}
                   <TableCell className="text-center">
