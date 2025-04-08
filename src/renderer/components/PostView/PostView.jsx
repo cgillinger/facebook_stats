@@ -1,78 +1,76 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '../ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
-import { 
-  ArrowUpDown, 
-  ArrowUp, 
-  ArrowDown, 
-  ChevronLeft, 
-  ChevronRight, 
-  FileDown, 
-  FileSpreadsheet, 
-  ExternalLink,
-  Copy,
-  Check
-} from 'lucide-react';
+import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileDown, FileSpreadsheet, ExternalLink } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Button } from '../ui/button';
 import { 
   readColumnMappings, 
-  getValue, 
+  getValue,
   formatValue,
   formatDate,
   DISPLAY_NAMES 
 } from '../ColumnMappingEditor/columnMappingService';
 
-// Konstanter för sidstorlek
+// Definiera specifika fält för per-inlägg-vyn - håll detta synkat med MainView.jsx
+const POST_VIEW_AVAILABLE_FIELDS = {
+  'description': 'Beskrivning',
+  'publish_time': 'Publiceringstid',
+  'post_type': 'Typ',
+  'reach': 'Räckvidd',
+  'views': 'Sidvisningar',
+  'total_engagement': 'Interaktioner',
+  'likes': 'Reaktioner',
+  'comments': 'Kommentarer',
+  'shares': 'Delningar',
+  'total_clicks': 'Totalt antal klick',
+  'other_clicks': 'Övriga klick',
+  'link_clicks': 'Länkklick'
+};
+
+// Max längd för trunkerade beskrivningar
+const MAX_DESCRIPTION_LENGTH = 100;
+
+// Definiera sidstorlekar för pagineringen
 const PAGE_SIZE_OPTIONS = [
   { value: '10', label: '10 per sida' },
   { value: '20', label: '20 per sida' },
-  { value: '50', label: '50 per sida' },
-  { value: '100', label: '100 per sida' }
+  { value: '50', label: '50 per sida' }
 ];
 
-// Funktionskomponent för posttyp-badge med färgkodning
+// Inläggstyper och deras färger
+const POST_TYPE_COLORS = {
+  'Foton': 'bg-blue-100 text-blue-800',
+  'Länkar': 'bg-purple-100 text-purple-800',
+  'Videor': 'bg-red-100 text-red-800',
+  'Status': 'bg-green-100 text-green-800',
+  'default': 'bg-gray-100 text-gray-800'
+};
+
+// Formatterad post-typ badge
 const PostTypeBadge = ({ type }) => {
-  // Färgkodning baserat på inläggstyp
-  const getTypeColor = (postType) => {
-    const lowerType = postType?.toLowerCase() || '';
-    
-    if (lowerType.includes('photo') || lowerType.includes('bild')) {
-      return 'bg-blue-100 text-blue-800';
-    } else if (lowerType.includes('link') || lowerType.includes('länk')) {
-      return 'bg-purple-100 text-purple-800';
-    } else if (lowerType.includes('video')) {
-      return 'bg-red-100 text-red-800';
-    } else if (lowerType.includes('status') || lowerType.includes('text') || lowerType.includes('text')) {
-      return 'bg-green-100 text-green-800';
-    } else if (lowerType.includes('event') || lowerType.includes('evenemang')) {
-      return 'bg-yellow-100 text-yellow-800';
-    } else if (lowerType.includes('offer') || lowerType.includes('erbjudande')) {
-      return 'bg-orange-100 text-orange-800';
-    } else {
-      return 'bg-gray-100 text-gray-800';
-    }
-  };
-  
   if (!type) return null;
   
+  const colorClass = POST_TYPE_COLORS[type] || POST_TYPE_COLORS.default;
+  
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getTypeColor(type)}`}>
+    <span className={`px-2 py-1 text-xs font-medium rounded-full ${colorClass}`}>
       {type}
     </span>
   );
 };
 
+// Huvudkomponent för PostView
 const PostView = ({ data, selectedFields }) => {
   const [sortConfig, setSortConfig] = useState({ key: 'publish_time', direction: 'desc' });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [selectedAccount, setSelectedAccount] = useState('all');
   const [uniqueAccounts, setUniqueAccounts] = useState([]);
-  const [columnMappings, setColumnMappings] = useState({});
+  const [selectedAccount, setSelectedAccount] = useState('all');
+  const [expandedDescriptions, setExpandedDescriptions] = useState({});
   const [isLoading, setIsLoading] = useState(true);
-  const [copyStatus, setCopyStatus] = useState({ field: null, rowId: null, copied: false });
-  
+  const [columnMappings, setColumnMappings] = useState({});
+
   // Ladda kolumnmappningar när komponenten monteras
   useEffect(() => {
     const loadMappings = async () => {
@@ -87,170 +85,188 @@ const PostView = ({ data, selectedFields }) => {
     };
     loadMappings();
   }, []);
-  
-  // Hämta unika konton från data
+
+  // Extrahera unika kontonamn från data
   useEffect(() => {
     if (data && Array.isArray(data)) {
-      const accountsSet = new Set();
-      for (const post of data) {
-        const accountName = getValue(post, 'account_name');
-        if (accountName) {
-          accountsSet.add(accountName);
-        }
+      try {
+        // Hitta unika kontonamn
+        const accountNames = new Set();
+        
+        data.forEach(post => {
+          const accountName = getValue(post, 'account_name');
+          if (accountName) {
+            accountNames.add(accountName);
+          }
+        });
+        
+        // Konvertera Set till sorterad array
+        const sortedNames = Array.from(accountNames).sort();
+        setUniqueAccounts(sortedNames);
+      } catch (error) {
+        console.error('Fel vid hämtning av unika kontonamn:', error);
       }
-      setUniqueAccounts(Array.from(accountsSet).sort());
     }
   }, [data]);
-  
-  // Återställ kopieringsstatus efter 1,5 sekunder
-  useEffect(() => {
-    if (copyStatus.copied) {
-      const timer = setTimeout(() => {
-        setCopyStatus({ field: null, rowId: null, copied: false });
-      }, 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [copyStatus]);
-  
-  // Återställ till första sidan när data, pageSize eller valt konto ändras
+
+  // Återställ till första sidan när data eller pageSize ändras
   useEffect(() => {
     setCurrentPage(1);
   }, [data, pageSize, selectedAccount]);
-  
-  // Hantera kopiera till urklipp
-  const handleCopyValue = useCallback((value, field, rowId) => {
-    if (value === undefined || value === null) return;
-    
-    // Konvertera till sträng och se till att formatering tas bort för numeriska värden
-    let rawValue;
-    
-    // Kontrollera om värdet är numeriskt och behöver rensas från formatering
-    if (typeof value === 'number' || (typeof value === 'string' && !isNaN(value.replace(/\s+/g, '')))) {
-      rawValue = String(value).replace(/\s+/g, '').replace(/\D/g, '');
-    } else {
-      // För icke-numeriska värden, behåll texten som den är
-      rawValue = String(value);
-    }
-    
-    navigator.clipboard.writeText(rawValue)
-      .then(() => {
-        setCopyStatus({ field, rowId, copied: true });
-        console.log(`Kopierade ${rawValue} till urklipp`);
-      })
-      .catch(err => {
-        console.error('Kunde inte kopiera till urklipp:', err);
-      });
-  }, []);
-  
-  // Hantera klick på extern länk
-  const handleExternalLink = useCallback((url) => {
-    if (!url) return;
-    
+
+  // Hantera sortering av kolumner
+  const handleSort = (key) => {
+    setSortConfig((currentSort) => ({
+      key,
+      direction: currentSort.key === key && currentSort.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  // Växla expandering av beskrivning
+  const toggleDescription = (postId) => {
+    setExpandedDescriptions(prev => ({
+      ...prev,
+      [postId]: !prev[postId]
+    }));
+  };
+
+  // Hantera öppnande av extern länk
+  const handleExternalLink = (postId, accountId) => {
     try {
-      if (window.electronAPI?.openExternalLink) {
-        window.electronAPI.openExternalLink(url);
+      if (!postId || postId === '-') return;
+      
+      // Bygg Facebook URL (notera att permalink-fältet skulle kunna användas om det finns)
+      let facebookUrl;
+      
+      if (accountId) {
+        // För Facebook är formatet vanligtvis: https://www.facebook.com/{accountId}/posts/{postId}
+        facebookUrl = `https://www.facebook.com/${accountId}/posts/${postId}`;
       } else {
-        window.open(url, '_blank', 'noopener,noreferrer');
+        // Fallback om inget accountId finns
+        facebookUrl = `https://www.facebook.com/${postId}`;
+      }
+      
+      if (window.electronAPI?.openExternalLink) {
+        window.electronAPI.openExternalLink(facebookUrl);
+      } else {
+        window.open(facebookUrl, '_blank', 'noopener,noreferrer');
       }
     } catch (error) {
       console.error('Failed to open external link:', error);
     }
-  }, []);
-  
-  // Hantera sortering av kolumner
-  const handleSort = useCallback((key) => {
-    setSortConfig(currentSort => ({
-      key,
-      direction: currentSort.key === key && currentSort.direction === 'asc' ? 'desc' : 'asc'
-    }));
-  }, []);
-  
-  // Hämta ikon för sortering
-  const getSortIcon = useCallback((columnKey) => {
+  };
+
+  // Formatera beskrivning med läs mer-funktion
+  const formatDescription = (description, postId) => {
+    if (!description) return '-';
+    
+    const isExpanded = expandedDescriptions[postId];
+    
+    if (description.length <= MAX_DESCRIPTION_LENGTH) {
+      return <span>{description}</span>;
+    }
+    
+    return (
+      <div>
+        {isExpanded ? description : `${description.substring(0, MAX_DESCRIPTION_LENGTH)}...`}
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleDescription(postId);
+          }}
+          className="ml-2 text-primary text-sm hover:underline"
+        >
+          {isExpanded ? 'Visa mindre' : 'Läs mer'}
+        </button>
+      </div>
+    );
+  };
+
+  // Få ikon för sortering
+  const getSortIcon = (columnKey) => {
     if (sortConfig.key !== columnKey) return <ArrowUpDown className="h-4 w-4 ml-1" />;
     return sortConfig.direction === 'asc' ? 
       <ArrowUp className="h-4 w-4 ml-1" /> : 
       <ArrowDown className="h-4 w-4 ml-1" />;
-  }, [sortConfig]);
-  
+  };
+
   // Hämta visningsnamn för ett fält
-  const getDisplayName = useCallback((field) => {
-    return DISPLAY_NAMES[field] || field;
-  }, []);
-  
-  // Filtrera data baserat på valt konto
-  const filteredData = React.useMemo(() => {
+  const getDisplayName = (field) => {
+    return POST_VIEW_AVAILABLE_FIELDS[field] || DISPLAY_NAMES[field] || field;
+  };
+
+  // Filtrera och sortera data baserat på aktuella inställningar
+  const filteredAndSortedData = React.useMemo(() => {
     if (!Array.isArray(data)) return [];
     
-    if (selectedAccount === 'all') {
-      return data;
+    // Filtrera baserat på valt konto
+    let filteredData = data;
+    if (selectedAccount !== 'all') {
+      filteredData = data.filter(post => 
+        getValue(post, 'account_name') === selectedAccount
+      );
     }
     
-    return data.filter(post => {
-      const accountName = getValue(post, 'account_name');
-      return accountName === selectedAccount;
-    });
-  }, [data, selectedAccount]);
-  
-  // Sortera data baserat på aktuell sorteringskonfiguration
-  const sortedData = React.useMemo(() => {
-    if (!filteredData || !Array.isArray(filteredData) || filteredData.length === 0) return [];
-    if (!sortConfig.key) return filteredData;
+    // Om ingen sorteringsnyckel eller ingen data, returnera endast filtrerad data
+    if (!sortConfig.key || filteredData.length === 0) return filteredData;
     
+    // Sortera data
     return [...filteredData].sort((a, b) => {
       const aValue = getValue(a, sortConfig.key);
       const bValue = getValue(b, sortConfig.key);
       
-      // Hantera null/undefined värden
+      // Hantera null-värden i sortering
       if (aValue === null && bValue === null) return 0;
       if (aValue === null) return 1;
       if (bValue === null) return -1;
       
-      // Sortera datumfält
-      if (sortConfig.key === 'publish_time' || sortConfig.key === 'date') {
-        const aDate = new Date(aValue);
-        const bDate = new Date(bValue);
-        
-        if (isNaN(aDate.getTime()) && isNaN(bDate.getTime())) return 0;
-        if (isNaN(aDate.getTime())) return 1;
-        if (isNaN(bDate.getTime())) return -1;
-        
-        return sortConfig.direction === 'asc' ? 
-          aDate.getTime() - bDate.getTime() : 
-          bDate.getTime() - aDate.getTime();
-      }
-      
-      // Sortera numeriska värden
+      // Sortera numeriska värden numeriskt
       if (typeof aValue === 'number' && typeof bValue === 'number') {
         return sortConfig.direction === 'asc' ? aValue - bValue : bValue - aValue;
       }
       
-      // Sortera strängar
-      const aStr = String(aValue).toLowerCase();
-      const bStr = String(bValue).toLowerCase();
+      // För datum, konvertera till Date-objekt och jämför
+      if (sortConfig.key === 'publish_time') {
+        const aDate = new Date(aValue);
+        const bDate = new Date(bValue);
+        
+        if (!isNaN(aDate) && !isNaN(bDate)) {
+          return sortConfig.direction === 'asc' ? aDate - bDate : bDate - aDate;
+        }
+      }
+      
+      // För strängar, gör en enkel alfabetisk jämförelse
+      const aStr = String(aValue || '').toLowerCase();
+      const bStr = String(bValue || '').toLowerCase();
       return sortConfig.direction === 'asc' ? 
         aStr.localeCompare(bStr) : 
         bStr.localeCompare(aStr);
     });
-  }, [filteredData, sortConfig]);
-  
+  }, [data, selectedAccount, sortConfig]);
+
   // Paginera data
   const paginatedData = React.useMemo(() => {
-    if (!sortedData) return [];
     const startIndex = (currentPage - 1) * pageSize;
-    return sortedData.slice(startIndex, startIndex + pageSize);
-  }, [sortedData, currentPage, pageSize]);
-  
-  const totalPages = Math.ceil((sortedData?.length || 0) / pageSize);
-  
-  // Exportera data till Excel
+    return filteredAndSortedData.slice(startIndex, startIndex + pageSize);
+  }, [filteredAndSortedData, currentPage, pageSize]);
+
+  const totalPages = Math.ceil(filteredAndSortedData.length / pageSize);
+
+  // Hantera export till Excel
   const handleExportToExcel = async () => {
     try {
-      const exportData = formatDataForExport(sortedData);
+      const exportData = formatDataForExport(filteredAndSortedData);
+      
+      const accountSuffix = selectedAccount !== 'all' 
+        ? `-${selectedAccount.replace(/\s+/g, '-')}` 
+        : '';
+      
       const result = await window.electronAPI.exportToExcel(
         exportData,
-        'facebook-statistik-inlagg.xlsx'
+        `facebook-statistik-inlagg${accountSuffix}.xlsx`
       );
+      
       if (result.success) {
         console.log('Export till Excel lyckades:', result.filePath);
       }
@@ -258,15 +274,21 @@ const PostView = ({ data, selectedFields }) => {
       console.error('Export till Excel misslyckades:', error);
     }
   };
-  
-  // Exportera data till CSV
+
+  // Hantera export till CSV
   const handleExportToCSV = async () => {
     try {
-      const exportData = formatDataForExport(sortedData);
+      const exportData = formatDataForExport(filteredAndSortedData);
+      
+      const accountSuffix = selectedAccount !== 'all' 
+        ? `-${selectedAccount.replace(/\s+/g, '-')}` 
+        : '';
+      
       const result = await window.electronAPI.exportToCSV(
         exportData,
-        'facebook-statistik-inlagg.csv'
+        `facebook-statistik-inlagg${accountSuffix}.csv`
       );
+      
       if (result.success) {
         console.log('Export till CSV lyckades:', result.filePath);
       }
@@ -274,70 +296,29 @@ const PostView = ({ data, selectedFields }) => {
       console.error('Export till CSV misslyckades:', error);
     }
   };
-  
+
   // Formatera data för export
   const formatDataForExport = (data) => {
-    if (!data) return [];
-    
     return data.map(post => {
-      const exportRow = {
-        'Sidnamn': getValue(post, 'account_name') || '-',
-        'Publiceringstid': formatDate(getValue(post, 'publish_time')),
-        'Inläggstyp': getValue(post, 'post_type') || '-'
+      const exportObject = {
+        Sidnamn: getValue(post, 'account_name') || 'Okänd sida',
+        Beskrivning: getValue(post, 'description') || '',
+        Publiceringstid: getValue(post, 'publish_time') || '',
+        Typ: getValue(post, 'post_type') || ''
       };
       
-      // Lägg till beskrivning om den finns
-      const description = getValue(post, 'description');
-      if (description) {
-        exportRow['Beskrivning'] = description;
-      }
-      
-      // Lägg till permalänk om den finns
-      const permalink = getValue(post, 'permalink');
-      if (permalink) {
-        exportRow['Permalänk'] = permalink;
-      }
-      
-      // Lägg till valda statistikfält
-      for (const field of selectedFields) {
-        if (field !== 'description' && field !== 'post_type' && field !== 'publish_time') {
+      // Lägg till valda fält
+      selectedFields.forEach(field => {
+        if (!['account_name', 'description', 'publish_time', 'post_type'].includes(field)) {
           const displayName = getDisplayName(field);
-          const value = getValue(post, field);
-          exportRow[displayName] = value !== null ? value : '-';
+          exportObject[displayName] = formatValue(getValue(post, field));
         }
-      }
+      });
       
-      return exportRow;
+      return exportObject;
     });
   };
-  
-  // Kopieringsikon-komponent med hover-effekt och tooltip
-  const CopyButton = ({ value, field, rowId }) => {
-    const isCopied = copyStatus.copied && copyStatus.field === field && copyStatus.rowId === rowId;
-    
-    // Visa inte kopieringsknapp för tomma värden eller null/undefined
-    if (value === undefined || value === null || value === '' || value === '-') {
-      return null;
-    }
-    
-    return (
-      <button
-        onClick={(e) => {
-          e.stopPropagation(); // Förhindra att andra event triggas
-          handleCopyValue(value, field, rowId);
-        }}
-        className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 hover:text-primary"
-        title="Kopiera till urklipp"
-      >
-        {isCopied ? (
-          <Check className="h-4 w-4 text-green-500" />
-        ) : (
-          <Copy className="h-4 w-4" />
-        )}
-      </button>
-    );
-  };
-  
+
   // Om inga fält är valda, visa meddelande
   if (selectedFields.length === 0) {
     return (
@@ -348,7 +329,7 @@ const PostView = ({ data, selectedFields }) => {
       </Card>
     );
   }
-  
+
   // Om data laddar, visa laddningsmeddelande
   if (isLoading) {
     return (
@@ -359,24 +340,27 @@ const PostView = ({ data, selectedFields }) => {
       </Card>
     );
   }
-  
+
   // Om ingen data finns, visa meddelande
-  if (!Array.isArray(filteredData) || filteredData.length === 0) {
+  if (!Array.isArray(filteredAndSortedData) || filteredAndSortedData.length === 0) {
     return (
       <Card className="p-6">
         <p className="text-center text-muted-foreground">
-          Ingen data tillgänglig för vald period
+          Ingen data tillgänglig för valda filter
         </p>
       </Card>
     );
   }
-  
+
+  // Identifiera vilka kolumner som ska visas baserat på selectedFields
+  const showPostType = selectedFields.includes('post_type');
+
   return (
-    <Card className="p-4">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-        <div>
-          <div className="flex items-center space-x-2">
-            <span className="text-sm font-medium">Visa sida:</span>
+    <Card>
+      <div className="flex flex-col space-y-4 p-4">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="flex items-center space-x-4">
+            <span className="text-sm text-muted-foreground">Visa sida:</span>
             <Select
               value={selectedAccount}
               onValueChange={setSelectedAccount}
@@ -387,223 +371,217 @@ const PostView = ({ data, selectedFields }) => {
               <SelectContent>
                 <SelectItem value="all">Alla sidor</SelectItem>
                 {uniqueAccounts.map(account => (
-                  <SelectItem key={account} value={account}>{account}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="text-sm text-muted-foreground mt-1">
-            Visar {sortedData.length} inlägg {selectedAccount !== 'all' ? `från ${selectedAccount}` : 'från alla sidor'}
-          </div>
-        </div>
-        
-        <div className="flex space-x-2">
-          <Button
-            variant="outline"
-            onClick={handleExportToCSV}
-            aria-label="Exportera till CSV"
-          >
-            <FileDown className="w-4 h-4 mr-2" />
-            CSV
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleExportToExcel}
-            aria-label="Exportera till Excel"
-          >
-            <FileSpreadsheet className="w-4 h-4 mr-2" />
-            Excel
-          </Button>
-        </div>
-      </div>
-      
-      <div className="rounded-md border bg-white overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10 text-center">#</TableHead>
-              <TableHead 
-                className="cursor-pointer hover:bg-muted/50 whitespace-nowrap"
-                onClick={() => handleSort('account_name')}
-              >
-                <div className="flex items-center">
-                  Sidnamn {getSortIcon('account_name')}
-                </div>
-              </TableHead>
-              
-              <TableHead 
-                className="cursor-pointer hover:bg-muted/50 whitespace-nowrap"
-                onClick={() => handleSort('publish_time')}
-              >
-                <div className="flex items-center">
-                  Publiceringsdatum {getSortIcon('publish_time')}
-                </div>
-              </TableHead>
-              
-              <TableHead 
-                className="cursor-pointer hover:bg-muted/50"
-                onClick={() => handleSort('post_type')}
-              >
-                <div className="flex items-center">
-                  Typ {getSortIcon('post_type')}
-                </div>
-              </TableHead>
-              
-              {selectedFields.includes('description') && (
-                <TableHead 
-                  className="cursor-pointer hover:bg-muted/50 min-w-[200px]"
-                  onClick={() => handleSort('description')}
-                >
-                  <div className="flex items-center">
-                    Beskrivning {getSortIcon('description')}
-                  </div>
-                </TableHead>
-              )}
-              
-              {selectedFields.filter(field => 
-                !['description', 'publish_time', 'post_type'].includes(field)
-              ).map(field => (
-                <TableHead 
-                  key={field}
-                  className="cursor-pointer hover:bg-muted/50 text-right whitespace-nowrap"
-                  onClick={() => handleSort(field)}
-                >
-                  <div className="flex items-center justify-end">
-                    {getDisplayName(field)} {getSortIcon(field)}
-                  </div>
-                </TableHead>
-              ))}
-              
-              <TableHead className="w-12 text-center">
-                Länk
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {paginatedData.map((post, index) => {
-              const postId = getValue(post, 'post_id');
-              const permalink = getValue(post, 'permalink');
-              
-              return (
-                <TableRow key={`${postId || index}`}>
-                  <TableCell className="text-center font-medium">
-                    {(currentPage - 1) * pageSize + index + 1}
-                  </TableCell>
-                  
-                  <TableCell className="whitespace-nowrap">
-                    {getValue(post, 'account_name') || '-'}
-                  </TableCell>
-                  
-                  <TableCell className="whitespace-nowrap">
-                    <div className="group flex items-center">
-                      <span>{formatDate(getValue(post, 'publish_time')) || '-'}</span>
-                      <CopyButton 
-                        value={formatDate(getValue(post, 'publish_time'))} 
-                        field="publish_time" 
-                        rowId={`${postId || index}`} 
-                      />
-                    </div>
-                  </TableCell>
-                  
-                  <TableCell>
-                    <PostTypeBadge type={getValue(post, 'post_type')} />
-                  </TableCell>
-                  
-                  {selectedFields.includes('description') && (
-                    <TableCell className="max-w-xs">
-                      <div className="truncate group flex items-center">
-                        <span className="truncate" title={getValue(post, 'description')}>
-                          {getValue(post, 'description') || '-'}
-                        </span>
-                        <CopyButton 
-                          value={getValue(post, 'description')} 
-                          field="description" 
-                          rowId={`${postId || index}`} 
-                        />
-                      </div>
-                    </TableCell>
-                  )}
-                  
-                  {selectedFields.filter(field => 
-                    !['description', 'publish_time', 'post_type'].includes(field)
-                  ).map(field => (
-                    <TableCell key={field} className="text-right">
-                      <div className="flex items-center justify-end group">
-                        <span>{formatValue(getValue(post, field))}</span>
-                        <CopyButton 
-                          value={getValue(post, field)} 
-                          field={field} 
-                          rowId={`${postId || index}`} 
-                        />
-                      </div>
-                    </TableCell>
-                  ))}
-                  
-                  <TableCell className="text-center">
-                    {permalink && (
-                      <button
-                        onClick={() => handleExternalLink(permalink)}
-                        className="inline-flex items-center justify-center text-blue-600 hover:text-blue-800"
-                        title="Öppna inlägg i webbläsare"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                        <span className="sr-only">Öppna inlägg</span>
-                      </button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-        
-        <div className="flex items-center justify-between p-4 border-t">
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-muted-foreground">Visa</span>
-            <Select
-              value={pageSize.toString()}
-              onValueChange={(newSize) => {
-                setPageSize(Number(newSize));
-                setCurrentPage(1);
-              }}
-            >
-              <SelectTrigger className="w-[100px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PAGE_SIZE_OPTIONS.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
+                  <SelectItem key={account} value={account}>
+                    {account}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           
-          <div className="flex items-center space-x-6">
-            <span className="text-sm text-muted-foreground">
-              Visar {((currentPage - 1) * pageSize) + 1} till {Math.min(currentPage * pageSize, sortedData?.length || 0)} av {sortedData?.length || 0}
-            </span>
-            
+          <div className="flex space-x-2">
+            <Button
+              variant="outline"
+              onClick={handleExportToCSV}
+              aria-label="Exportera till CSV"
+            >
+              <FileDown className="w-4 h-4 mr-2" />
+              CSV
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleExportToExcel}
+              aria-label="Exportera till Excel"
+            >
+              <FileSpreadsheet className="w-4 h-4 mr-2" />
+              Excel
+            </Button>
+          </div>
+        </div>
+
+        <div className="rounded-md border overflow-x-auto bg-white">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-10 text-center">#</TableHead>
+                
+                {/* Sidnamn kolumn är alltid inkluderad */}
+                <TableHead 
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => handleSort('account_name')}
+                >
+                  <div className="flex items-center whitespace-nowrap">
+                    Sidnamn {getSortIcon('account_name')}
+                  </div>
+                </TableHead>
+                
+                {/* Beskrivning är alltid inkluderad */}
+                <TableHead 
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => handleSort('description')}
+                >
+                  <div className="flex items-center">
+                    Beskrivning {getSortIcon('description')}
+                  </div>
+                </TableHead>
+                
+                {/* Publiceringstid är alltid inkluderad */}
+                <TableHead 
+                  className="cursor-pointer hover:bg-muted/50 w-40"
+                  onClick={() => handleSort('publish_time')}
+                >
+                  <div className="flex items-center whitespace-nowrap">
+                    Publiceringstid {getSortIcon('publish_time')}
+                  </div>
+                </TableHead>
+                
+                {/* Typ kolumn visas endast om post_type är valt */}
+                {showPostType && (
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50 w-28"
+                    onClick={() => handleSort('post_type')}
+                  >
+                    <div className="flex items-center whitespace-nowrap">
+                      Typ {getSortIcon('post_type')}
+                    </div>
+                  </TableHead>
+                )}
+                
+                {/* Lägg till valda fält som kolumner */}
+                {selectedFields.map(field => {
+                  // Hoppa över fält som redan är inkluderade
+                  if (['description', 'publish_time', 'account_name', 'post_type'].includes(field)) {
+                    return null;
+                  }
+                  
+                  return (
+                    <TableHead 
+                      key={field}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleSort(field)}
+                    >
+                      <div className="flex items-center justify-end">
+                        {getDisplayName(field)} {getSortIcon(field)}
+                      </div>
+                    </TableHead>
+                  );
+                })}
+                
+                <TableHead className="w-12 text-center">
+                  Länk
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paginatedData.map((post, index) => {
+                const postId = getValue(post, 'post_id');
+                const accountId = getValue(post, 'account_id');
+                const description = getValue(post, 'description');
+                const publishTime = getValue(post, 'publish_time');
+                const accountName = getValue(post, 'account_name');
+                const postType = getValue(post, 'post_type');
+                
+                return (
+                  <TableRow key={postId || index}>
+                    <TableCell className="text-center font-medium">
+                      {(currentPage - 1) * pageSize + index + 1}
+                    </TableCell>
+                    
+                    <TableCell className="font-medium">
+                      {accountName || 'Okänd sida'}
+                    </TableCell>
+                    
+                    <TableCell>
+                      {formatDescription(description, postId || index)}
+                    </TableCell>
+                    
+                    <TableCell className="whitespace-nowrap">
+                      {formatDate(publishTime)}
+                    </TableCell>
+                    
+                    {/* Visa Typ-fältet om det är valt */}
+                    {showPostType && (
+                      <TableCell className="text-center">
+                        <PostTypeBadge type={postType} />
+                      </TableCell>
+                    )}
+                    
+                    {selectedFields.map(field => {
+                      // Hoppa över fält som redan är inkluderade
+                      if (['description', 'publish_time', 'account_name', 'post_type'].includes(field)) {
+                        return null;
+                      }
+                      
+                      return (
+                        <TableCell key={field} className="text-right">
+                          {formatValue(getValue(post, field))}
+                        </TableCell>
+                      );
+                    })}
+                    
+                    <TableCell className="text-center">
+                      {postId && (
+                        <button
+                          onClick={() => handleExternalLink(postId, accountId)}
+                          className="inline-flex items-center justify-center text-blue-600 hover:text-blue-800"
+                          title="Öppna i Facebook"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                          <span className="sr-only">Öppna Facebook-inlägg</span>
+                        </button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+
+          <div className="flex items-center justify-between p-4 border-t">
             <div className="flex items-center space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
+              <span className="text-sm text-muted-foreground">Visa</span>
+              <Select
+                value={pageSize.toString()}
+                onValueChange={(value) => setPageSize(Number(value))}
               >
-                <ChevronLeft className="h-4 w-4" />
-                <span className="sr-only">Föregående sida</span>
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage >= totalPages}
-              >
-                <ChevronRight className="h-4 w-4" />
-                <span className="sr-only">Nästa sida</span>
-              </Button>
+                <SelectTrigger className="w-[100px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZE_OPTIONS.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center space-x-6">
+              <span className="text-sm text-muted-foreground">
+                Visar {((currentPage - 1) * pageSize) + 1} till {Math.min(currentPage * pageSize, filteredAndSortedData.length)} av {filteredAndSortedData.length}
+              </span>
+              
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="sr-only">Föregående sida</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                  <span className="sr-only">Nästa sida</span>
+                </Button>
+              </div>
             </div>
           </div>
         </div>

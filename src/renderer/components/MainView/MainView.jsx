@@ -28,6 +28,7 @@ import { getMemoryUsageStats, getUploadedFilesMetadata } from '@/utils/webStorag
 // Definiera specifika fält för per-inlägg-vyn
 const POST_VIEW_AVAILABLE_FIELDS = {
   'post_id': 'Publicerings-ID',
+  'post_type': 'Typ', // Lagt till Typ som valbart fält
   'reach': 'Räckvidd',
   'views': 'Sidvisningar',
   'total_engagement': 'Interaktioner',
