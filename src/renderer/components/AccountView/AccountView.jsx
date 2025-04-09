@@ -16,6 +16,7 @@ import { ACCOUNT_VIEW_FIELDS } from '@/utils/dataProcessing';
 
 // Definiera specifika fält för per-konto-vyn - håll detta synkat med MainView.jsx
 const ACCOUNT_VIEW_AVAILABLE_FIELDS = {
+  'account_id': 'Sido-ID', // Lagt till Sido-ID som valbart fält
   'views': 'Sidvisningar',
   'average_reach': 'Genomsnittlig räckvidd',
   'total_engagement': 'Interaktioner',
@@ -32,7 +33,13 @@ const ACCOUNT_VIEW_AVAILABLE_FIELDS = {
 // Lista över fält som inte ska ha totalsumma
 const FIELDS_WITHOUT_TOTALS = [
   'average_reach',
-  'posts_per_day'
+  'posts_per_day',
+  'account_id' // Lägg till account_id som ett fält som inte ska ha totalsumma
+];
+
+// Lista över fält som ska visas utan formatering (utan tusentalsavgränsare)
+const FIELDS_WITHOUT_FORMATTING = [
+  'account_id'
 ];
 
 const PAGE_SIZE_OPTIONS = [
@@ -105,6 +112,19 @@ const ProfileIcon = ({ accountName }) => {
       {displayLetter}
     </div>
   );
+};
+
+// Anpassad funktion för att formatera värden baserat på fälttyp
+const formatFieldValue = (value, field) => {
+  // För fält som ska visas utan formatering
+  if (FIELDS_WITHOUT_FORMATTING.includes(field)) {
+    if (value === null || value === undefined) return '-';
+    // Returnera värdet som string utan formatering
+    return String(value);
+  }
+  
+  // För övriga fält, använd standardformatering
+  return formatValue(value);
 };
 
 // Funktion för att summera värden per konto (synkron version)
@@ -378,13 +398,19 @@ const AccountView = ({ data, selectedFields }) => {
   const handleCopyValue = useCallback((value, field, rowId = 'total') => {
     if (value === undefined || value === null) return;
     
-    // Konvertera till sträng och se till att formatering tas bort
-    const rawValue = String(value).replace(/\s+/g, '').replace(/\D/g, '');
+    // För account_id, kopiera det oformaterade värdet
+    let textToCopy;
+    if (FIELDS_WITHOUT_FORMATTING.includes(field)) {
+      textToCopy = String(value);
+    } else {
+      // För övriga fält, ta bort formatering
+      textToCopy = String(value).replace(/\s+/g, '').replace(/\D/g, '');
+    }
     
-    navigator.clipboard.writeText(rawValue)
+    navigator.clipboard.writeText(textToCopy)
       .then(() => {
         setCopyStatus({ field, rowId, copied: true });
-        console.log(`Kopierade ${rawValue} till urklipp`);
+        console.log(`Kopierade ${textToCopy} till urklipp`);
       })
       .catch(err => {
         console.error('Kunde inte kopiera till urklipp:', err);
@@ -500,6 +526,11 @@ const AccountView = ({ data, selectedFields }) => {
         'Sidnamn': getValue(account, 'account_name') || 'Okänd sida'
       };
       
+      // Lägg till Sido-ID om det är valt
+      if (selectedFields.includes('account_id')) {
+        formattedAccount['Sido-ID'] = getValue(account, 'account_id') || '';
+      }
+      
       // Lägg till Facebook-URL om sid-id finns
       const accountId = getValue(account, 'account_id');
       if (accountId) {
@@ -509,6 +540,9 @@ const AccountView = ({ data, selectedFields }) => {
       }
       
       for (const field of selectedFields) {
+        // Hoppa över account_id eftersom vi hanterat det separat ovan
+        if (field === 'account_id') continue;
+        
         // För export använder vi fortfarande ACCOUNT_VIEW_FIELDS från dataProcessing
         // eftersom det kan innehålla mer specifika exportnamn
         const displayName = ACCOUNT_VIEW_FIELDS[field] || getDisplayName(field);
@@ -637,7 +671,7 @@ const AccountView = ({ data, selectedFields }) => {
                 <TableCell key={field} className="text-right font-semibold text-primary">
                   {!FIELDS_WITHOUT_TOTALS.includes(field) ? (
                     <div className="flex items-center justify-end group">
-                      <span>{formatValue(totalSummary[field])}</span>
+                      <span>{formatFieldValue(totalSummary[field], field)}</span>
                       <CopyButton value={totalSummary[field]} field={field} rowId="total" />
                     </div>
                   ) : (
@@ -669,7 +703,7 @@ const AccountView = ({ data, selectedFields }) => {
                   {selectedFields.map((field) => (
                     <TableCell key={field} className="text-right">
                       <div className="flex items-center justify-end group">
-                        <span>{formatValue(getValue(account, field))}</span>
+                        <span>{formatFieldValue(getValue(account, field), field)}</span>
                         <CopyButton 
                           value={getValue(account, field)} 
                           field={field} 

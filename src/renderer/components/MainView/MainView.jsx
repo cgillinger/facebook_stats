@@ -28,7 +28,7 @@ import { getMemoryUsageStats, getUploadedFilesMetadata } from '@/utils/webStorag
 // Definiera specifika fält för per-inlägg-vyn
 const POST_VIEW_AVAILABLE_FIELDS = {
   'post_id': 'Publicerings-ID',
-  'post_type': 'Typ', // Lagt till Typ som valbart fält
+  'post_type': 'Typ',
   'reach': 'Räckvidd',
   'views': 'Sidvisningar',
   'total_engagement': 'Interaktioner',
@@ -42,6 +42,7 @@ const POST_VIEW_AVAILABLE_FIELDS = {
 
 // Definiera specifika fält för per-konto-vyn
 const ACCOUNT_VIEW_AVAILABLE_FIELDS = {
+  'account_id': 'Sido-ID', // Lagt till Sido-ID som valbart fält
   'views': 'Sidvisningar',
   'average_reach': 'Genomsnittlig räckvidd',
   'total_engagement': 'Interaktioner',
