@@ -82,8 +82,8 @@ function formatSwedishDate(date) {
 function countUniqueAccounts(data) {
   if (!Array.isArray(data) || data.length === 0) return 0;
   
-  // Använd Set för att hålla unika account_id/page_id
-  const uniqueAccountIds = new Set();
+  // Använd Map för att hålla koll på unika konton baserat på normaliserat namn
+  const uniqueAccounts = new Map();
   
   // Logga första raden för debugging
   if (data.length > 0) {
@@ -96,28 +96,37 @@ function countUniqueAccounts(data) {
   }
   
   data.forEach(row => {
-    // Kontrollera först direkta kolumnnamn från Facebook
-    if (row['Sid-id'] !== undefined) {
-      uniqueAccountIds.add(String(row['Sid-id']));
-      return; // Om vi hittade ID via denna metod, kan vi fortsätta med nästa rad
+    // Hämta konto-ID och namn
+    let accountId = row['Sid-id'];
+    if (accountId === undefined) {
+      accountId = getValue(row, 'account_id');
+      if (!accountId && row.page_id) {
+        accountId = row.page_id;
+      }
     }
     
-    // Kontrollera både account_id och page_id för att vara säker
-    let accountId = getValue(row, 'account_id');
-    
-    // Om account_id inte finns, prova med page_id direkt
-    if (!accountId && row.page_id) {
-      accountId = row.page_id;
+    let accountName = row['Sidnamn'];
+    if (accountName === undefined) {
+      accountName = getValue(row, 'account_name');
     }
     
-    if (accountId) {
-      uniqueAccountIds.add(String(accountId));
+    if (!accountName) return;
+    
+    // Normalisera kontonamnet
+    const normalizedName = accountName.toLowerCase().replace(/\s+/g, '');
+    
+    // Om detta kontonamn redan finns, använd det befintliga kontot
+    if (!uniqueAccounts.has(normalizedName)) {
+      uniqueAccounts.set(normalizedName, {
+        id: accountId,
+        name: accountName
+      });
     }
   });
   
   // Logga resultat för debugging
-  console.log('Found unique account IDs:', uniqueAccountIds.size);
-  return uniqueAccountIds.size || 1; // Fallback till 1 om inga konton hittas (bättre än 0)
+  console.log('Found unique accounts by name:', uniqueAccounts.size);
+  return uniqueAccounts.size || 1; // Fallback till 1 om inga konton hittas (bättre än 0)
 }
 
 /**
@@ -205,6 +214,23 @@ function preprocessFacebookRow(row) {
   }
   
   return processedRow;
+}
+
+/**
+ * Detekterar om en post är en omslagsfoto-uppdatering baserat på titel/beskrivning
+ * @param {Object} row - Posten att kontrollera
+ * @returns {boolean} - true om det är en omslagsfoto-uppdatering
+ */
+function isCoverPhotoUpdate(row) {
+  const title = row['Titel'] || row['description'] || '';
+  const postType = row['Inläggstyp'] || row['post_type'] || '';
+  
+  return (
+    title.toLowerCase().includes('omslagsfoto') || 
+    title.toLowerCase().includes('updated its cover') ||
+    postType.toLowerCase().includes('cover_photo') ||
+    title.toLowerCase().includes('uppdaterat sitt omslagsfoto')
+  );
 }
 
 /**
@@ -345,6 +371,48 @@ function isFacebookData(firstRow) {
 }
 
 /**
+ * Genererar en unik nyckel för att identifiera konton baserat på både namn och ID
+ * Löser problem när samma konto har olika ID:n
+ */
+function generateAccountKey(accountID, accountName, description = null) {
+  // Säkerställ att accountID är en sträng
+  const accountIDStr = accountID ? String(accountID) : '';
+  
+  // Skapa en normaliserad version av kontonamnet (ta bort mellanslag, använd bara lowercase)
+  const normalizedName = accountName 
+    ? accountName.toLowerCase().replace(/\s+/g, '')
+    : '';
+  
+  // Särskild hantering av omslagsfoto-uppdateringar - använd endast kontonamnet som nyckel
+  if (description && (
+      description.toLowerCase().includes('omslagsfoto') || 
+      description.toLowerCase().includes('updated its cover') ||
+      description.toLowerCase().includes('uppdaterat sitt omslagsfoto')
+    )) {
+    return `name_${normalizedName}`;
+  }
+  
+  // Om både ID och namn finns, använd en kombination
+  if (accountIDStr && normalizedName) {
+    // Prioritera kontonamnet, men lägg till ID för att skilja konton med helt identiska namn
+    return `${normalizedName}_${accountIDStr.slice(-4)}`;
+  }
+  
+  // Fallback: Om bara ID finns, använd det
+  if (accountIDStr) {
+    return `id_${accountIDStr}`;
+  }
+  
+  // Sista utväg: Om bara namn finns, använd det
+  if (normalizedName) {
+    return `name_${normalizedName}`;
+  }
+  
+  // Om inget finns, använd en timestamp som unik identifierare
+  return `unknown_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+/**
  * Bearbetar CSV-innehåll och returnerar aggregerad data
  */
 export async function processPostData(csvContent, columnMappings, shouldMergeWithExisting = false, fileName = 'Facebook CSV') {
@@ -403,6 +471,28 @@ export async function processPostData(csvContent, columnMappings, shouldMergeWit
             rows: results.data.length,
             columns: Object.keys(results.data[0]).length
           });
+          
+          // Sök efter omslagsfoto-uppdateringar
+          const coverPhotoUpdates = results.data.filter(row => 
+            (row['Titel'] && row['Titel'].toLowerCase().includes('omslagsfoto')) ||
+            (row['Titel'] && row['Titel'].toLowerCase().includes('uppdaterat sitt omslagsfoto'))
+          );
+          
+          if (coverPhotoUpdates.length > 0) {
+            console.log(`Hittade ${coverPhotoUpdates.length} omslagsfoto-uppdateringar`);
+            
+            // Logga den första för debugging
+            if (coverPhotoUpdates.length > 0) {
+              console.log('Exempel på omslagsfoto-uppdatering:', {
+                Titel: coverPhotoUpdates[0]['Titel'],
+                Sidnamn: coverPhotoUpdates[0]['Sidnamn'],
+                'Sid-id': coverPhotoUpdates[0]['Sid-id'],
+                Visningar: coverPhotoUpdates[0]['Visningar'],
+                Reaktioner: coverPhotoUpdates[0]['Reaktioner'],
+                Kommentarer: coverPhotoUpdates[0]['Kommentarer']
+              });
+            }
+          }
           
           // För Facebook, förbearbeta data för att sätta description från Titel
           let processedData = results.data;
@@ -474,11 +564,36 @@ export async function processPostData(csvContent, columnMappings, shouldMergeWit
             // Skapa konton från befintlig data
             existingAccountData.forEach(account => {
               const accountID = account.account_id;
-              if (accountID) {
-                perKonto[accountID] = { ...account };
+              const accountName = account.account_name;
+              
+              // Använd den nya accountKey-funktionen för att generera nycklar
+              const accountKey = generateAccountKey(accountID, accountName);
+              
+              if (accountKey) {
+                perKonto[accountKey] = { ...account };
               }
             });
           }
+          
+          // Map för att hålla koll på konton som redan setts med samma namn
+          const accountNameMap = new Map();
+          
+          // Skapa en map för normaliserade kontonamn -> primär kontonyckel
+          const normalizedAccountNames = new Map();
+          
+          // Förkör filteredData för att identifiera huvudkonton baserat på kontonamn
+          filteredData.forEach(row => {
+            const accountName = row['Sidnamn'] || getValue(row, 'account_name') || 'Okänd sida';
+            const normalizedName = accountName.toLowerCase().replace(/\s+/g, '');
+            
+            // För varje unikt normaliserat namn, välja det ID som har flest poster med "normal" engagemang
+            // Detta hjälper oss att hitta det huvudsakliga konto-IDt för alla konton med samma namn
+            if (!normalizedAccountNames.has(normalizedName)) {
+              const accountID = row['Sid-id'] || getValue(row, 'account_id') || 'unknown';
+              const accountKey = generateAccountKey(accountID, accountName);
+              normalizedAccountNames.set(normalizedName, accountKey);
+            }
+          });
           
           // Bearbeta varje unik rad från nya data
           filteredData.forEach((row, index) => {
@@ -515,8 +630,52 @@ export async function processPostData(csvContent, columnMappings, shouldMergeWit
             // Använd getValue för att säkerställa att account_name finns
             const accountName = getValue(mappedRow, 'account_name') || 'Okänd sida';
             
+            // Hämta beskrivning för att kontrollera om det är en omslagsfoto-uppdatering
+            const description = getValue(mappedRow, 'description') || '';
+            
             // Ingen account_username i FB, men vi behåller fältet för kompabilitet
             const accountUsername = '';
+            
+            // Normalisera kontonamnet för konsolidering
+            const normalizedName = accountName.toLowerCase().replace(/\s+/g, '');
+            
+            // Om detta är en omslagsfoto-uppdatering eller liknande specialpost, använd primär kontonyckel
+            // baserat på det normaliserade namnet om det finns, annars skapa en kontonyckel baserat på namnet
+            let accountKey;
+            
+            // Särskild hantering för omslagsfoto-uppdateringar
+            if (isCoverPhotoUpdate(mappedRow)) {
+              console.log(`Hanterar omslagsfoto-uppdatering för ${accountName}`);
+              
+              // Använd det primära konto-ID för detta kontonamn om vi har det
+              if (normalizedAccountNames.has(normalizedName)) {
+                accountKey = normalizedAccountNames.get(normalizedName);
+                console.log(`Använder befintlig nyckel för ${accountName}: ${accountKey}`);
+              } else {
+                // Om inget primärt konto-ID finns, skapa ett baserat på namnet
+                accountKey = `name_${normalizedName}`;
+                console.log(`Skapar namnbaserad nyckel för ${accountName}: ${accountKey}`);
+              }
+            } else {
+              // För vanliga inlägg, använd standardmetoden
+              accountKey = generateAccountKey(accountID, accountName, description);
+            }
+            
+            // Spåra kontonamn för debug och dubblettkontroll
+            if (!accountNameMap.has(accountName)) {
+              accountNameMap.set(accountName, accountKey);
+            } else {
+              // Om vi hittar ett konto med samma namn men annan nyckel, logga detta
+              const existingKey = accountNameMap.get(accountName);
+              if (existingKey !== accountKey) {
+                console.log(`ACCOUNT DUPLICATE DETECTED: "${accountName}" has multiple IDs:`, {
+                  existingKey,
+                  newKey: accountKey,
+                  accountID,
+                  description: description.substring(0, 50) // Visa bara början av beskrivningen
+                });
+              }
+            }
             
             // Samla in publiceringsdatum för datumintervall
             const publishDate = getValue(mappedRow, 'publish_time') || 
@@ -532,24 +691,24 @@ export async function processPostData(csvContent, columnMappings, shouldMergeWit
             }
             
             // Skapa konto-objekt om det inte finns
-            if (!perKonto[accountID]) {
-              perKonto[accountID] = { 
+            if (!perKonto[accountKey]) {
+              perKonto[accountKey] = { 
                 "account_id": accountID,
                 "account_name": accountName,
                 "account_username": accountUsername
               };
-              SUMMARIZABLE_COLUMNS.forEach(col => perKonto[accountID][col] = 0);
+              SUMMARIZABLE_COLUMNS.forEach(col => perKonto[accountKey][col] = 0);
             }
             
             // Summera värden
             SUMMARIZABLE_COLUMNS.forEach(col => {
               const value = getValue(mappedRow, col);
               if (value !== null && !isNaN(parseFloat(value))) {
-                perKonto[accountID][col] += parseFloat(value);
+                perKonto[accountKey][col] += parseFloat(value);
                 
                 // För debugging, spåra views-värden
                 if (col === 'views' && isFirstRow) {
-                  console.log(`Adding views value ${value} to account ${accountID}`);
+                  console.log(`Adding views value ${value} to account ${accountKey}`);
                 }
               }
             });
