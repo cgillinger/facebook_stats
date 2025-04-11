@@ -1,157 +1,269 @@
-# Facebook Statistik - Systemdokumentation
+# Facebook Statistics Web Application - Technical Documentation
 
-## Systemöversikt
+## Application Overview
 
-Facebook Statistik är en klientsideapplikation som låter användare analysera och visualisera statistik från Facebook-inlägg. Applikationen är helt webbaserad och kör all logik i webbläsaren utan att skicka data till någon server. Den är byggd med React, Vite och TailwindCSS, och använder ShadcnUI-komponenter för användargränssnittet.
+This web application analyzes and visualizes statistics from Facebook posts. It allows users to upload CSV files exported from Meta Business Suite, process the data client-side, and view statistics across different dimensions. The application is designed to run entirely in the browser without sending data to any server, prioritizing privacy and security.
 
-### Kärnfunktionalitet
+### Key Features
 
-- **Importera Facebook-statistik** från CSV-filer exporterade från Meta Business Suite
-- **Visualisera data** i olika perspektiv (per konto, per inlägg, per inläggstyp)
-- **Filtrera och sortera** statistikdata
-- **Exportera analyser** till CSV eller Excel
-- **Anpassa kolumnmappningar** för att hantera ändringar i Meta:s exportformat
-- **Minneshantering** för att kontrollera hur mycket data som kan laddas in i webbläsaren
+- Import CSV data exported from Facebook/Meta Business Suite
+- View statistics across three dimensions: per account, per post, and per post type
+- Filter, sort, and paginate large datasets
+- Customize column mappings to handle changes in Meta's export format
+- Export analyzed data to CSV or Excel
+- Monitor and manage memory usage to handle large datasets
+- 100% client-side processing with no server requirements
 
-### Teknisk arkitektur
+## Technical Architecture
 
-Applikationen är utvecklad som en Single Page Application (SPA) och använder:
+The application is built as a Single Page Application (SPA) using modern web technologies:
 
-- **React 18** som UI-bibliotek
-- **Vite** som byggsystem
-- **TailwindCSS** för styling
-- **ShadcnUI** för komponentbibliotek
-- **PapaParse** för CSV-parsning
-- **SheetJS (XLSX)** för Excel-export
-- **LocalStorage och IndexedDB** för datalagring
+- **React 18**: UI framework
+- **Vite**: Build system
+- **TailwindCSS**: Styling
+- **ShadcnUI**: Component library
+- **PapaParse**: CSV parsing
+- **SheetJS (XLSX)**: Excel file handling
+- **localStorage & IndexedDB**: Client-side data storage
 
-Appen är designad för att köras både direkt i webbläsaren och som en desktopapplikation via Electron. För att stödja detta används en Electron API-emulator som ersätter Electron's IPC med webbläsarens API:er när appen körs i en webbkontext.
+The application is designed to run in both web browsers and as an Electron desktop application. To support this dual-mode, it uses an Electron API emulator that provides compatible interfaces when running in a browser context.
 
-## Kodstruktur
+## Data Flow
 
-### Huvudkomponenter
+1. User uploads CSV files exported from Facebook/Meta Business Suite
+2. CSV data is validated against configured column mappings
+3. Data is processed to detect duplicates, normalize values, and calculate metrics
+4. Processed data is stored in localStorage/IndexedDB
+5. Data is displayed in one of three views (account, post, post type)
+6. Users can filter, sort, and analyze the data
+7. Users can export results to CSV or Excel
 
-- `src/index.jsx`: Applikationens ingångspunkt
-- `src/renderer/App.jsx`: Huvudapplikationskomponent som hanterar initialiseringen
-- `src/renderer/components/MainView/MainView.jsx`: Central vy som styr navigering mellan olika datavisningar
-- `src/renderer/components/FileUploader/FileUploader.jsx`: Komponent för filuppladdning och databearbetning
-- `src/renderer/components/AccountView/AccountView.jsx`: Vy för per konto-statistik
-- `src/renderer/components/PostView/PostView.jsx`: Vy för per inlägg-statistik
-- `src/renderer/components/PostTypeView/PostTypeView.jsx`: Vy för statistik grupperad efter inläggstyp
-- `src/renderer/components/ColumnMappingEditor/ColumnMappingEditor.jsx`: Editor för att anpassa kolumnmappningar
-- `src/utils/webDataProcessor.js`: Kärnfunktionalitet för databearbetning
-- `src/utils/webStorageService.js`: Hantering av datalagring i webbläsaren
-- `src/utils/electronApiEmulator.js`: Emulerar Electron API i webbläsaren
+## Core Components
 
-### Datastrategi
-
-- **LocalStorage**: Används för konfiguration och mindre datamängder (kolumnmappningar)
-- **IndexedDB**: Används för större datamängder (inläggs- och kontodata)
-- **Minnessäkerhet**: Applikationen övervakar minnesanvändning och varnar användare när gränser närmar sig
-
-## Komponentbeskrivningar
-
-### Kärnmoduler
+### Key Scripts and Their Functionality
 
 #### `src/utils/electronApiEmulator.js`
-Denna modul simulerar Electron IPC API:er i webbläsarkontext. Den exponerar funktioner som `readFile`, `writeFile`, `openExternalLink`, `exportToExcel`, och `exportToCSV`. Möjliggör att samma kod kan användas i både webbläsaren och Electron.
+**Purpose**: Emulates Electron's IPC API in browser context.
+
+This module creates a browser-compatible version of Electron's API, enabling the application to run in both browser and desktop contexts without code changes. It mocks functions like `readFile`, `writeFile`, `exportToExcel`, `exportToCSV`, and `openExternalLink`.
+
+Key functions:
+- `initElectronApiEmulator()`: Initializes the emulator
+- `readFile()`: Reads files from mock/localStorage
+- `writeFile()`: Writes files to mock/localStorage
+- `exportToExcel()`: Exports data as Excel files
+- `exportToCSV()`: Exports data as CSV files
 
 #### `src/utils/webStorageService.js`
-Hanterar all datalagring i webbläsaren med både localStorage och IndexedDB. Ansvarar för läsning, skrivning och rensning av data, samt hantering av fil- och statistikmetadata.
+**Purpose**: Manages all data storage operations.
+
+This module provides comprehensive storage services using both localStorage (for small data) and IndexedDB (for larger datasets). It handles reading, writing, and clearing data, as well as managing file metadata.
+
+Key functions:
+- `saveProcessedData()`: Stores processed data
+- `readColumnMappings()`: Retrieves column mappings
+- `saveColumnMappings()`: Saves column mappings
+- `handleFileUpload()`: Processes file uploads
+- `clearAllData()`: Removes all stored data
+- `getMemoryUsageStats()`: Retrieves memory usage information
 
 #### `src/utils/webDataProcessor.js`
-Bearbetar CSV-data som laddats upp av användaren. Hanterar parsing, normalisering, och transformering av data. Innehåller logik för att detektera och filtrera dubletter, mappning av kolumnnamn, och beräkning av sammanfattande statistik.
+**Purpose**: Processes and transforms CSV data.
+
+This module handles the core data processing logic, including parsing CSV, normalizing data, detecting duplicates, and transforming data into useful formats.
+
+Key functions:
+- `processPostData()`: Main processing function for uploaded CSV
+- `analyzeCSVFile()`: Fast analysis of CSV structure
+- `handleDuplicates()`: Identifies and filters duplicate posts
+- `mapColumnNames()`: Applies column mappings to data
 
 #### `src/utils/memoryUtils.js`
-Tillhandahåller verktyg för att övervaka och hantera minnesanvändning. Definierar tröskelvärden för varningar, uppskattar tillgängligt lagringsutrymme, och beräknar hur mycket data som kan läggas till.
+**Purpose**: Monitors and manages memory usage.
 
-### Användarinterface-komponenter
+This module helps track browser storage limits and warns users when approaching capacity. It calculates memory usage, estimates remaining capacity, and helps prevent data loss.
+
+Key functions:
+- `calculateMemoryUsage()`: Measures current memory consumption
+- `calculateMemoryWithNewFile()`: Projects memory impact of adding a file
+- `estimateAdditionalFileCapacity()`: Estimates how many more files can be added
 
 #### `src/renderer/App.jsx`
-Huvudapplikationskomponenten som initierar appen och hanterar övergripande tillstånd. Renser data vid appstart, kontrollerar minnesanvändning, och orkestrerar dataflöde mellan andra komponenter.
+**Purpose**: Main application component.
 
-#### `src/renderer/components/FileUploader/FileUploader.jsx`
-Ansvarar för filuppladdning och första steget av databearbetning. Tillhandahåller drag-and-drop gränssnitt, filvalidering, kolumnvalidering, och minneskontroll innan databearbetning.
+This component initializes the application, manages global state, and handles top-level routing. It orchestrates data flow between components and manages initial data loading/clearing.
+
+Key responsibilities:
+- Clears existing data on app startup
+- Checks memory usage
+- Manages file uploader visibility
+- Handles data processing results
 
 #### `src/renderer/components/MainView/MainView.jsx`
-Central navigeringskomponent som låter användare växla mellan olika datavisningar (konto/inlägg/inläggstyp), välja vilka värden som ska visas, och hantera datahanteringsaktiviteter som att lägga till eller återställa data.
+**Purpose**: Central view component managing different data visualization modes.
+
+This component allows users to switch between different analysis views (account/post/post type), select which fields to display, and manage data operations (adding more data, resetting).
+
+Key features:
+- View selection (account/post/post type)
+- Field selection for display
+- Memory monitoring
+- Access to column mapping editor
+- Data management controls
+
+#### `src/renderer/components/FileUploader/FileUploader.jsx`
+**Purpose**: Handles file selection, validation, and initial processing.
+
+This component provides a user interface for uploading CSV files, validates file content against configured column mappings, checks memory constraints, and initiates data processing.
+
+Key features:
+- Drag-and-drop file upload
+- File validation
+- Column mapping validation
+- Memory usage check
+- Duplicate file detection
 
 #### `src/renderer/components/AccountView/AccountView.jsx`
-Visar statistik per Facebook-konto. Hanterar sortering, paginering, och export. Beräknar statistiska sammanfattningar (summa, medelvärde, etc.) för varje konto.
+**Purpose**: Displays statistics aggregated by account.
+
+This view summarizes data at the account level, showing metrics like total reach, engagement, and posts per account. It handles sorting, pagination, and export functions.
+
+Key features:
+- Aggregation by account
+- Sorting on all columns
+- Pagination for large datasets
+- Export to CSV/Excel
+- Total row calculations
 
 #### `src/renderer/components/PostView/PostView.jsx`
-Visar statistik per inlägg med detaljerad information. Stödjer filtrering per konto, sortering på alla kolumner, och paginering för stora datamängder.
+**Purpose**: Displays statistics at the individual post level.
+
+This view shows detailed metrics for each post, allows filtering by account, and provides links to original Facebook posts. It handles sorting, pagination, and export.
+
+Key features:
+- Post-level detail
+- Account filtering
+- Sortable columns
+- Pagination
+- External links to Facebook posts
 
 #### `src/renderer/components/PostTypeView/PostTypeView.jsx`
-Analyserar och visualiserar statistik grupperad efter inläggstyp (bilder, länkar, videor, etc.). Inkluderar diagram och beräknar genomsnitt för olika parametrar per inläggstyp.
+**Purpose**: Analyzes and visualizes statistics by post type.
+
+This view aggregates data by post type (photos, videos, links, etc.), showing metrics like average reach and engagement per type. It includes pie charts and reliability indicators.
+
+Key features:
+- Post type aggregation
+- Pie chart visualization
+- Statistical reliability indicators
+- Filtering options
+- Export functionality
 
 #### `src/renderer/components/ColumnMappingEditor/ColumnMappingEditor.jsx`
-Tillåter användare att konfigurera hur kolumner i uppladdade CSV-filer ska mappas till interna fältnamn. Detta är viktigt för att hantera ändringar i exportformat från Meta över tid.
+**Purpose**: Allows customization of column mappings.
 
-#### `src/renderer/components/MemoryIndicator/MemoryIndicator.jsx`
-Visar aktuell minnesanvändning och uppskattar hur mycket mer data som kan läggas till innan gränser nås. Inkluderar statusfärger och varningar vid högt minnesutnyttjande.
+This component enables users to configure how columns in CSV files map to internal fields, accommodating changes in Facebook's export format over time.
 
-#### `src/renderer/components/LoadedFilesInfo/LoadedFilesInfo.jsx`
-Visar information om redan uppladdade filer och tillåter användare att ta bort enstaka filer eller rensa all data.
-
-### Support-komponenter
+Key features:
+- Editing column mappings
+- Restoring default mappings
+- Providing examples for common column names
+- Grouping fields by category
+- Validation of mappings
 
 #### `src/renderer/components/ColumnMappingEditor/columnMappingService.js`
-Tillhandahåller tjänster för att hantera kolumnmappningar, inklusive läsning, skrivning, normalisering, och validering. Innehåller standardmappningar och displaynamn för fält.
+**Purpose**: Provides services for column mapping logic.
+
+This module handles the business logic for column mappings, including normalization, validation, and field value retrieval.
+
+Key functions:
+- `getCurrentMappings()`: Gets current column mappings
+- `normalizeText()`: Standardizes text for comparison
+- `findMatchingColumnKey()`: Matches column names
+- `getValue()`: Retrieves values using mappings
+- `validateRequiredColumns()`: Checks for required columns
 
 #### `src/renderer/components/FileUploader/useColumnMapper.js`
-Custom React-hook som hanterar kolumnvalidering vid filuppladdning. Kontrollerar att CSV-filer innehåller nödvändiga kolumner baserat på konfigurerade mappningar.
+**Purpose**: Custom React hook for column validation.
 
-### UI-komponenter (shadcn/ui)
+This hook validates CSV headers against configured mappings to ensure the file contains required data.
 
-I `src/renderer/components/ui/` finns flera basgränssnittskomponenter baserade på shadcn/ui-biblioteket, inklusive:
-- `alert.jsx`: Visar viktiga meddelanden och notifieringar
-- `button.jsx`: Knappar med olika stilar
-- `card.jsx`: Kortkomponent för att gruppera innehåll
-- `checkbox.jsx`: Kryssrutor
-- `input.jsx`: Inmatningsfält
-- `label.jsx`: Etiketter för formulärelement
-- `select.jsx`: Valkomponenter (dropdowns)
-- `switch.jsx`: Toggle-knappar
-- `table.jsx`: Tabellkomponenter
-- `tabs.jsx`: Flikhantering
+Key functions:
+- `validateColumns()`: Validates CSV content
+- `validateHeaders()`: Checks header structure
 
-## Dataflöde
+#### `src/renderer/components/MemoryIndicator/MemoryIndicator.jsx`
+**Purpose**: Displays memory usage information.
 
-1. **Dataimport**: CSV-filer laddas upp via `FileUploader`
-2. **Datavalidering**: Kolumner valideras mot konfigurerade mappningar
-3. **Databearbetning**: `webDataProcessor` analyserar och transformerar data
-4. **Datalagring**: `webStorageService` sparar bearbetad data
-5. **Visualisering**: Data visas i `AccountView`, `PostView`, eller `PostTypeView`
-6. **Interaktion**: Användare filtrerar, sorterar och navigerar genom data
-7. **Export**: Analysdata kan exporteras till CSV eller Excel
+This component shows current memory consumption, estimates remaining capacity, and alerts users when approaching storage limits.
 
-## Minneshantering
+Key features:
+- Visual indicator of memory usage
+- Warning thresholds
+- Estimated remaining capacity
+- Detailed memory breakdown
 
-Applikationen har ett robust system för minneshantering:
+#### `src/renderer/components/LoadedFilesInfo/LoadedFilesInfo.jsx`
+**Purpose**: Displays information about loaded files.
 
-1. Data lagras i både localStorage (små datamängder) och IndexedDB (större dataset)
-2. `MemoryIndicator` övervakar minnesanvändning och visar varningar vid höga nivåer
-3. `memoryUtils` gör sannolikhetsbedömningar av hur mycket data som kan läggas till
-4. `webStorageService` implementerar fallback-mekanismer och error-hantering
-5. Användarvarningar visas när tillgängligt minne närmar sig gränser
+This component shows metadata about uploaded files, allowing users to manage data sources.
 
-## Utökningsstrategier
+Key features:
+- List of uploaded files
+- File metadata display
+- Remove individual files
+- Clear all data
 
-För att vidareutveckla appen, överväg följande områden:
+## Data Structure
 
-1. **Utökad dataanalys**: Implementera fler statistiska beräkningar och visualiseringar
-2. **Stöd för fler datakällor**: Lägg till support för andra Meta-plattformar (Instagram, WhatsApp)
-3. **Förbättrad minneshantering**: Implementera dataregionalisering och selektiv laddning
-4. **Offline-synkronisering**: Spara användarinställningar mellan sessioner
-5. **Exportanpassning**: Tillåt anpassade exportformat och visualiseringar
-6. **API-integration**: Lägg till direkt API-anslutning till Meta:s datakällor
-7. **Molnbackup**: Möjlighet att spara data i molnet för senare användning
+### Column Mappings
+The application uses a mapping system to translate between Facebook's CSV column names and internal field names. This allows the app to handle changes in Facebook's export format.
 
-## Kända begränsningar
+Key mappings include:
+- Metadata fields (post_id, account_id, account_name, description, etc.)
+- Metric fields (views, reach, likes, comments, shares, etc.)
 
-1. **Minnesbegränsningar**: Webbläsarlagring har inneboende begränsningar
-2. **CSV-format**: Appen är anpassad för Facebook-exportformat som kan ändras
-3. **Prestanda**: Stora datamängder kan orsaka prestandaproblem
-4. **Inget serverstöd**: Alla beräkningar måste ske på klientsidan
-5. **Begränsade visualiseringar**: Diagramtyperna är begränsade till vad som implementerats
+### Storage Strategy
+- **localStorage**: Used for configuration and small data (column mappings)
+- **IndexedDB**: Used for larger datasets (post data, account data)
+- Memory usage is monitored to prevent exceeding browser limits
+
+## Extension Points
+
+### Adding New Views
+The application's tab-based interface in `MainView.jsx` can be extended with new visualization modes. Add a new tab and corresponding view component.
+
+### Supporting New Metrics
+To add support for new metrics from Facebook:
+1. Add the field to relevant constant objects in `columnMappingService.js`
+2. Update display names in view components
+3. Update column mapping editor groups
+
+### Adding Export Formats
+The export functionality in `webStorageService.js` can be extended to support additional formats beyond CSV and Excel.
+
+### Data Source Extensions
+The application is designed for Facebook data but could be extended to support other Meta platforms (Instagram, WhatsApp) by adding appropriate column mappings and data processing logic.
+
+## Memory Management
+
+The application includes sophisticated memory management:
+- Monitors localStorage and IndexedDB usage
+- Warns users when approaching storage limits
+- Provides estimates of remaining capacity
+- Implements chunking strategies for large datasets
+- Clearing mechanisms for data management
+
+## Limitations
+
+- Browser storage limits (typically 5-10MB for localStorage, ~50-200MB for IndexedDB)
+- Performance degradation with very large datasets
+- Dependency on Facebook's CSV export format
+- Limited visualization options (currently tables and basic charts)
+- No server-side processing for advanced analytics
+
+## Conclusion
+
+This Facebook Statistics web application provides a robust, private way to analyze Facebook post performance. It runs entirely in the browser, respecting user privacy while offering powerful analysis capabilities. The architecture balances functionality with browser limitations, using memory management strategies to handle large datasets.
+
+For further development, key areas to consider include adding more visualization types, supporting additional data sources, implementing more advanced analytics, and optimizing memory usage for even larger datasets.
