@@ -4,3 +4,5 @@ dist/
 .env
 *.log
 .vscode/
+# Ignorera Windows ADS Zone.Identifier filer (WSL)
+*:[Zz]one.Identifier

@@ -13,11 +13,13 @@ import {
   Database,
   UploadCloud,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  TrendingUp
 } from 'lucide-react';
 import AccountView from '../AccountView';
 import PostView from '../PostView';
 import PostTypeView from '../PostTypeView/PostTypeView';
+import TrendAnalysisView from '../TrendAnalysisView/TrendAnalysisView';
 import { FileUploader } from '../FileUploader';
 import { ColumnMappingEditor } from '../ColumnMappingEditor';
 import { MemoryIndicator } from '../MemoryIndicator/MemoryIndicator';
@@ -67,6 +69,21 @@ const POST_TYPE_VIEW_AVAILABLE_FIELDS = {
   'total_clicks': 'Totalt antal klick',
   'other_clicks': 'Övriga klick',
   'link_clicks': 'Länkklick'
+};
+
+// Definiera fält för trendanalys (samma som per-konto)
+const TREND_ANALYSIS_AVAILABLE_FIELDS = {
+  'views': 'Sidvisningar',
+  'average_reach': 'Genomsnittlig räckvidd',
+  'total_engagement': 'Interaktioner',
+  'likes': 'Reaktioner',
+  'comments': 'Kommentarer',
+  'shares': 'Delningar',
+  'total_clicks': 'Totalt antal klick',
+  'other_clicks': 'Övriga klick',
+  'link_clicks': 'Länkklick',
+  'post_count': 'Antal publiceringar',
+  'posts_per_day': 'Publiceringar per dag'
 };
 
 // Bekräftelsedialog-komponent
@@ -131,6 +148,7 @@ const MainView = ({ data, meta, onDataProcessed }) => {
   const getAvailableFields = () => {
     if (activeView === 'account') return ACCOUNT_VIEW_AVAILABLE_FIELDS;
     if (activeView === 'post_type') return POST_TYPE_VIEW_AVAILABLE_FIELDS;
+    if (activeView === 'trend_analysis') return TREND_ANALYSIS_AVAILABLE_FIELDS;
     return POST_VIEW_AVAILABLE_FIELDS;
   };
 
@@ -374,24 +392,31 @@ const MainView = ({ data, meta, onDataProcessed }) => {
         </div>
       )}
 
-      <Card>
-        <CardContent className="pt-6">
-          <div className="space-y-4">
-            <h2 className="text-lg font-semibold">Välj värden att visa</h2>
-            <ValueSelector
-              availableFields={getAvailableFields()}
-              selectedFields={selectedFields}
-              onSelectionChange={setSelectedFields}
-            />
-          </div>
-        </CardContent>
-      </Card>
+      {/* Visa fältval endast för icke-trendanalys vyer */}
+      {activeView !== 'trend_analysis' && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              <h2 className="text-lg font-semibold">Välj värden att visa</h2>
+              <ValueSelector
+                availableFields={getAvailableFields()}
+                selectedFields={selectedFields}
+                onSelectionChange={setSelectedFields}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs value={activeView} onValueChange={setActiveView}>
         <TabsList>
           <TabsTrigger value="account">Per konto</TabsTrigger>
           <TabsTrigger value="post">Per inlägg</TabsTrigger>
           <TabsTrigger value="post_type">Per inläggstyp</TabsTrigger>
+          <TabsTrigger value="trend_analysis">
+            <TrendingUp className="w-4 h-4 mr-2" />
+            Trendanalys
+          </TabsTrigger>
         </TabsList>
 
         {hasDateRange && (
@@ -413,6 +438,10 @@ const MainView = ({ data, meta, onDataProcessed }) => {
 
         <TabsContent value="post_type">
           <PostTypeView data={data} selectedFields={selectedFields} />
+        </TabsContent>
+
+        <TabsContent value="trend_analysis">
+          <TrendAnalysisView data={data} meta={meta} />
         </TabsContent>
       </Tabs>
     </div>
