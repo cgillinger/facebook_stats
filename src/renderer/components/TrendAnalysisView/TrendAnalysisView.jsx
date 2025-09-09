@@ -41,6 +41,52 @@ const getMonthName = (month) => {
   return months[month - 1] || month.toString();
 };
 
+/**
+ * Beräknar jämna Y-axel ticks med start från 0
+ * @param {number} maxValue - Högsta värdet i datamängden
+ * @returns {Object} - Y-axel konfiguration med jämna intervaller
+ */
+const calculateNiceYAxis = (maxValue) => {
+  if (maxValue <= 0) {
+    return { min: 0, max: 100, ticks: [0, 25, 50, 75, 100] };
+  }
+  
+  // Bestäm magnitud (10, 100, 1000, 10000, etc.)
+  const magnitude = Math.pow(10, Math.floor(Math.log10(maxValue)));
+  
+  // Bestäm lämpligt intervall baserat på hur många ticks vi vill ha (5-8 stycken)
+  let tickInterval;
+  const normalizedMax = maxValue / magnitude;
+  
+  if (normalizedMax <= 1) {
+    tickInterval = magnitude * 0.25; // 0.25, 0.5, 0.75, 1
+  } else if (normalizedMax <= 2) {
+    tickInterval = magnitude * 0.5; // 0.5, 1, 1.5, 2
+  } else if (normalizedMax <= 5) {
+    tickInterval = magnitude * 1; // 1, 2, 3, 4, 5
+  } else if (normalizedMax <= 10) {
+    tickInterval = magnitude * 2; // 2, 4, 6, 8, 10
+  } else {
+    tickInterval = magnitude * 5; // 5, 10, 15, 20, 25
+  }
+  
+  // Beräkna max som är jämnt delbar med tickInterval
+  const niceMax = Math.ceil(maxValue / tickInterval) * tickInterval;
+  
+  // Generera tick-värden från 0 till niceMax
+  const ticks = [];
+  for (let i = 0; i <= niceMax; i += tickInterval) {
+    ticks.push(Math.round(i));
+  }
+  
+  return {
+    min: 0,
+    max: niceMax,
+    ticks: ticks,
+    tickInterval: tickInterval
+  };
+};
+
 // Smooth curve generation för mjuka linjer
 const createSmoothPath = (points) => {
   if (points.length < 2) return '';
@@ -218,19 +264,14 @@ const TrendAnalysisView = ({ data, meta }) => {
       });
   }, [monthlyAccountData, selectedAccounts, selectedMetric]);
 
-  // Y-axel range
-  const yAxisRange = useMemo(() => {
-    if (chartLines.length === 0) return { min: 0, max: 100 };
+  // Y-axel range med jämna intervaller
+  const yAxisConfig = useMemo(() => {
+    if (chartLines.length === 0) return { min: 0, max: 100, ticks: [0, 25, 50, 75, 100] };
     
     const allValues = chartLines.flatMap(line => line.points.map(p => p.value));
-    const min = Math.min(...allValues);
-    const max = Math.max(...allValues);
-    const padding = (max - min) * 0.1 || 10;
+    const maxValue = Math.max(...allValues);
     
-    return {
-      min: Math.max(0, min - padding),
-      max: max + padding
-    };
+    return calculateNiceYAxis(maxValue);
   }, [chartLines]);
 
   const handleAccountToggle = (accountId) => {
@@ -448,15 +489,14 @@ const TrendAnalysisView = ({ data, meta }) => {
                   </defs>
                   <rect width="100%" height="100%" fill="url(#grid)" />
 
-                  {/* Y-axel */}
-                  {[0, 25, 50, 75, 100].map(percent => {
-                    const yPos = 450 - (percent / 100) * 380;
-                    const value = yAxisRange.min + (percent / 100) * (yAxisRange.max - yAxisRange.min);
+                  {/* Y-axel med jämna ticks */}
+                  {yAxisConfig.ticks.map(tickValue => {
+                    const yPos = 450 - ((tickValue - yAxisConfig.min) / (yAxisConfig.max - yAxisConfig.min)) * 380;
                     return (
-                      <g key={percent}>
+                      <g key={tickValue}>
                         <line x1="70" y1={yPos} x2="930" y2={yPos} stroke="#d1d5db" strokeWidth="1"/>
                         <text x="65" y={yPos + 4} textAnchor="end" fontSize="14" fill="#6b7280">
-                          {Math.round(value).toLocaleString()}
+                          {tickValue.toLocaleString()}
                         </text>
                       </g>
                     );
@@ -485,7 +525,7 @@ const TrendAnalysisView = ({ data, meta }) => {
 
                     const pathPoints = line.points.map((point, index) => {
                       const x = 70 + (index / Math.max(1, monthlyAccountData.months.length - 1)) * 860;
-                      const y = 450 - ((point.value - yAxisRange.min) / (yAxisRange.max - yAxisRange.min)) * 380;
+                      const y = 450 - ((point.value - yAxisConfig.min) / (yAxisConfig.max - yAxisConfig.min)) * 380;
                       return { x, y, point };
                     });
 
