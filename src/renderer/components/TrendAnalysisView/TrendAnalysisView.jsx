@@ -11,7 +11,7 @@ import {
   AlertCircle,
   Info
 } from 'lucide-react';
-import { getValue } from '../ColumnMappingEditor/columnMappingService';
+import { getValue } from '@/utils/columnConfig';
 
 // Tillgängliga metrics för trendanalys
 const TREND_METRICS = {

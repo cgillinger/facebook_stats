@@ -5,10 +5,9 @@ import { Checkbox } from "../ui/checkbox";
 import { Label } from "../ui/label";
 import { Button } from "../ui/button";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
-import { 
-  Settings, 
-  CalendarIcon, 
-  Upload, 
+import {
+  CalendarIcon,
+  Upload,
   Plus,
   Database,
   UploadCloud,
@@ -21,7 +20,6 @@ import PostView from '../PostView';
 import PostTypeView from '../PostTypeView/PostTypeView';
 import TrendAnalysisView from '../TrendAnalysisView/TrendAnalysisView';
 import { FileUploader } from '../FileUploader';
-import { ColumnMappingEditor } from '../ColumnMappingEditor';
 import { MemoryIndicator } from '../MemoryIndicator/MemoryIndicator';
 import { LoadedFilesInfo } from '../LoadedFilesInfo/LoadedFilesInfo';
 import { ACCOUNT_VIEW_FIELDS, POST_VIEW_FIELDS } from '@/utils/dataProcessing';
@@ -132,7 +130,6 @@ const ValueSelector = ({ availableFields, selectedFields, onSelectionChange }) =
 const MainView = ({ data, meta, onDataProcessed }) => {
   const [selectedFields, setSelectedFields] = useState([]);
   const [activeView, setActiveView] = useState('account');
-  const [showColumnMapping, setShowColumnMapping] = useState(false);
   const [showFileUploader, setShowFileUploader] = useState(false);
   const [showAddMoreData, setShowAddMoreData] = useState(false);
   const [showNewAnalysis, setShowNewAnalysis] = useState(false);
@@ -280,20 +277,6 @@ const MainView = ({ data, meta, onDataProcessed }) => {
     );
   }
 
-  if (showColumnMapping) {
-    return (
-      <div className="space-y-4">
-        <Button 
-          variant="outline" 
-          onClick={() => setShowColumnMapping(false)}
-        >
-          Tillbaka till statistik
-        </Button>
-        <ColumnMappingEditor />
-      </div>
-    );
-  }
-
   return (
     <div className="container mx-auto p-4 space-y-6">
       {/* Egen bekräftelsedialog för "Återställ data" */}
@@ -321,19 +304,12 @@ const MainView = ({ data, meta, onDataProcessed }) => {
             <Plus className="w-4 h-4 mr-1" />
             Lägg till data
           </Button>
-          <Button 
+          <Button
             onClick={handleNewAnalysis}
             variant="outline"
           >
             <RefreshCw className="w-4 h-4 mr-1" />
             Återställ data
-          </Button>
-          <Button 
-            variant="outline" 
-            onClick={() => setShowColumnMapping(true)}
-          >
-            <Settings className="w-4 h-4 mr-2" />
-            Hantera kolumnmappningar
           </Button>
         </div>
       </div>

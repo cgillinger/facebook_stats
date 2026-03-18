@@ -10,7 +10,7 @@ import {
   getAccountViewData, 
   getPostViewData
 } from './webStorageService';
-import { DEFAULT_MAPPINGS, getValue, normalizeText } from '../renderer/components/ColumnMappingEditor/columnMappingService';
+import { COLUMN_MAPPINGS as DEFAULT_MAPPINGS, getValue, normalizeText } from './columnConfig';
 
 // Fältaliaser för kompatibilitet med Facebook
 const FIELD_ALIASES = {

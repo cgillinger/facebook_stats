@@ -4,13 +4,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileDown, FileSpreadsheet, ExternalLink } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Button } from '../ui/button';
-import { 
-  readColumnMappings, 
+import {
   getValue,
   formatValue,
   formatDate,
-  DISPLAY_NAMES 
-} from '../ColumnMappingEditor/columnMappingService';
+  DISPLAY_NAMES
+} from '@/utils/columnConfig';
 
 // Definiera specifika fält för per-inlägg-vyn - håll detta synkat med MainView.jsx
 const POST_VIEW_AVAILABLE_FIELDS = {
@@ -68,23 +67,7 @@ const PostView = ({ data, selectedFields }) => {
   const [uniqueAccounts, setUniqueAccounts] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState('all');
   const [expandedDescriptions, setExpandedDescriptions] = useState({});
-  const [isLoading, setIsLoading] = useState(true);
-  const [columnMappings, setColumnMappings] = useState({});
-
-  // Ladda kolumnmappningar när komponenten monteras
-  useEffect(() => {
-    const loadMappings = async () => {
-      try {
-        const mappings = await readColumnMappings();
-        setColumnMappings(mappings);
-        setIsLoading(false);
-      } catch (error) {
-        console.error('Failed to load column mappings:', error);
-        setIsLoading(false);
-      }
-    };
-    loadMappings();
-  }, []);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Extrahera unika kontonamn från data
   useEffect(() => {

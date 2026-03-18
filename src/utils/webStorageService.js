@@ -10,7 +10,6 @@ import { calculateMemoryUsage } from './memoryUtils';
 
 // Konstanter
 const STORAGE_KEYS = {
-  COLUMN_MAPPINGS: 'facebook_stats_column_mappings',
   PROCESSED_DATA: 'facebook_stats_processed_data',
   ACCOUNT_VIEW_DATA: 'facebook_stats_account_view',
   POST_VIEW_DATA: 'facebook_stats_post_view',
@@ -430,21 +429,6 @@ const downloadExcel = async (data, filename) => {
 };
 
 /**
- * Läser kolumnmappningar från localStorage eller returnerar standard
- */
-const readColumnMappings = async (defaultMappings) => {
-  const savedMappings = getConfig(STORAGE_KEYS.COLUMN_MAPPINGS);
-  return savedMappings || defaultMappings;
-};
-
-/**
- * Sparar kolumnmappningar till localStorage
- */
-const saveColumnMappings = async (mappings) => {
-  return saveConfig(STORAGE_KEYS.COLUMN_MAPPINGS, mappings);
-};
-
-/**
  * Sparar bearbetad data till localStorage eller IndexedDB beroende på storlek
  */
 const saveProcessedData = async (accountViewData, postViewData, fileInfo = null) => {
@@ -691,8 +675,6 @@ const resetDatabase = async () => {
 
 export {
   STORAGE_KEYS,
-  readColumnMappings,
-  saveColumnMappings,
   handleFileUpload,
   downloadFile,
   downloadExcel,

@@ -6,12 +6,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Button } from '../ui/button';
 import { Switch } from '../ui/switch';
 import { Label } from '../ui/label';
-import { 
-  readColumnMappings, 
-  getValue, 
+import {
+  getValue,
   formatValue,
-  DISPLAY_NAMES 
-} from '../ColumnMappingEditor/columnMappingService';
+  DISPLAY_NAMES
+} from '@/utils/columnConfig';
 
 // Constants for view
 const ALL_ACCOUNTS = 'all_accounts';
@@ -157,26 +156,10 @@ const PostTypeView = ({ data, selectedFields }) => {
   const [pageSize, setPageSize] = useState(20);
   const [selectedAccount, setSelectedAccount] = useState(ALL_ACCOUNTS);
   const [uniqueAccounts, setUniqueAccounts] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [columnMappings, setColumnMappings] = useState({});
+  const [isLoading, setIsLoading] = useState(false);
   const [aggregatedData, setAggregatedData] = useState([]);
   const [showOnlyReliable, setShowOnlyReliable] = useState(false);
   const [copyStatus, setCopyStatus] = useState({ field: null, rowId: null, copied: false });
-
-  // Load column mappings when component mounts
-  useEffect(() => {
-    const loadMappings = async () => {
-      try {
-        const mappings = await readColumnMappings();
-        setColumnMappings(mappings);
-        setIsLoading(false);
-      } catch (error) {
-        console.error('Failed to load column mappings:', error);
-        setIsLoading(false);
-      }
-    };
-    loadMappings();
-  }, []);
 
   // Get unique accounts from data
   useEffect(() => {
