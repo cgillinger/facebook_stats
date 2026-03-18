@@ -8,7 +8,6 @@ En webbapplikation för att analysera och visualisera statistik från Facebook-i
 
 - **Filtrering per konto eller per inlägg** - Analysera data per Facebook-sida eller på inläggsnivå
 - **Anpassningsbara visualiseringar** - Välj vilka värden som ska visas i tabeller
-- **Kolumnmappningar** - Konfigurera hur Facebook-exportkolumner ska mappas till interna fält
 - **100% Klientbaserad** - All data bearbetas lokalt i webbläsaren, ingen data skickas till någon server
 - **Lokalt datalagring** - Sparar data i din webbläsare för snabb åtkomst
 - **Exportmöjligheter** - Exportera analyserad data till CSV eller Excel
@@ -73,11 +72,7 @@ yarn build
 
 ### Kolumnmappningar
 
-Om Facebook ändrar kolumnnamn i exportfiler:
-
-1. Gå till "Hantera kolumnmappningar"
-2. Uppdatera mappningar för att matcha de nya kolumnnamnen
-3. Ladda in din CSV-fil igen
+Kolumnmappningarna är hårdkodade för svenska kolumnnamn från Meta Business Suite. Om Meta ändrar kolumnnamn i exportfiler, uppdatera `src/utils/columnConfig.js`.
 
 ### Hantera data
 

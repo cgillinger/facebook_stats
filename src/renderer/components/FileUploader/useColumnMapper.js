@@ -1,83 +1,51 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import Papa from 'papaparse';
-import { 
-  DEFAULT_MAPPINGS, 
-  DISPLAY_NAMES, 
-  getCurrentMappings, 
-  normalizeText,
+import {
+  COLUMN_MAPPINGS,
+  DISPLAY_NAMES,
   findMatchingColumnKey
-} from '../ColumnMappingEditor/columnMappingService';
+} from '@/utils/columnConfig';
 
 /**
  * Hook för att hantera kolumnmappningar för CSV-data
- * @returns {Object} Kolumnmappningsverktyg
+ * Använder hårdkodade mappningar från columnConfig.js
  */
 export function useColumnMapper() {
-  const [currentMappings, setCurrentMappings] = useState(DEFAULT_MAPPINGS);
   const [missingColumns, setMissingColumns] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Ladda mappningar när komponenten monteras
-  useEffect(() => {
-    const loadMappings = async () => {
-      try {
-        setIsLoading(true);
-        // Vi kan fortsätta använda async här eftersom detta är i useEffect
-        const mappings = await getCurrentMappings();
-        console.log('useColumnMapper: Laddade aktuella mappningar:', mappings);
-        setCurrentMappings(mappings);
-        setMissingColumns([]);
-      } catch (error) {
-        console.error('useColumnMapper: Fel vid laddning av mappningar:', error);
-        setCurrentMappings(DEFAULT_MAPPINGS);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    loadMappings();
-  }, []);
 
   /**
-   * Validerar CSV-innehåll mot konfigurerade mappningar
-   * @param {string} csvContent - CSV-filens innehåll
-   * @returns {Object} - Resultat av valideringen
+   * Validerar CSV-innehåll mot de hårdkodade mappningarna
    */
   const validateColumns = (csvContent) => {
     try {
-      // Använd Papaparse för att hämta kolumnrubriker
-      const result = Papa.parse(csvContent, { 
-        header: true, 
+      const result = Papa.parse(csvContent, {
+        header: true,
         preview: 1,
         skipEmptyLines: true
       });
-      
+
       if (!result.meta || !result.meta.fields) {
         throw new Error('Kunde inte läsa kolumnnamn från CSV');
       }
-      
-      const headers = result.meta.fields;
-      return validateHeaders(headers);
+
+      return validateHeaders(result.meta.fields);
     } catch (error) {
       console.error('Fel vid validering av CSV:', error);
-      return { 
-        isValid: false, 
-        missing: [], 
-        found: [], 
-        unknown: [] 
+      return {
+        isValid: false,
+        missing: [],
+        found: [],
+        unknown: []
       };
     }
   };
 
   /**
-   * Validerar headers mot konfigurerade mappningar
-   * Använder enbart exakta matchningar mot mappningar
-   * @param {Array} headers - Lista med kolumnrubriker
-   * @returns {Object} - Resultat av valideringen
+   * Validerar headers mot de hårdkodade mappningarna
    */
   const validateHeaders = (headers) => {
     console.log('Validerar headers:', headers);
-    
+
     if (!headers || !Array.isArray(headers)) {
       console.error('Ogiltiga headers:', headers);
       return {
@@ -93,9 +61,8 @@ export function useColumnMapper() {
     const found = [];
     const unknown = [];
 
-    // Gå igenom varje header och försök hitta matchning mot konfigurerade mappningar
     headers.forEach(header => {
-      const internalName = findMatchingColumnKey(header, currentMappings);
+      const internalName = findMatchingColumnKey(header, COLUMN_MAPPINGS);
       if (internalName) {
         foundInternalNames.add(internalName);
         found.push({
@@ -109,13 +76,12 @@ export function useColumnMapper() {
     });
 
     // Hitta saknade obligatoriska fält
-    const requiredFields = new Set(Object.values(currentMappings));
+    const requiredFields = new Set(Object.values(COLUMN_MAPPINGS));
     requiredFields.forEach(internalName => {
       if (!foundInternalNames.has(internalName)) {
-        // Hitta original kolumnnamn för detta interna namn
-        const originalName = Object.entries(currentMappings)
+        const originalName = Object.entries(COLUMN_MAPPINGS)
           .find(([_, internal]) => internal === internalName)?.[0];
-          
+
         missing.push({
           original: originalName,
           internal: internalName,
@@ -124,7 +90,6 @@ export function useColumnMapper() {
       }
     });
 
-    // Uppdatera state för att visa varningar i UI
     setMissingColumns(missing);
 
     console.log('Valideringsresultat:', {
@@ -144,9 +109,9 @@ export function useColumnMapper() {
   return useMemo(() => ({
     validateHeaders,
     validateColumns,
-    columnMappings: currentMappings,
+    columnMappings: COLUMN_MAPPINGS,
     displayNames: DISPLAY_NAMES,
     missingColumns,
-    isLoading
-  }), [currentMappings, missingColumns, isLoading]);
+    isLoading: false
+  }), [missingColumns]);
 }

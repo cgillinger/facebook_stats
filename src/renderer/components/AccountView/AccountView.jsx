@@ -4,12 +4,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, FileDown, FileSpreadsheet, Calculator, ExternalLink, Copy, Check } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Button } from '../ui/button';
-import { 
-  readColumnMappings, 
+import {
+  COLUMN_MAPPINGS,
   getValue,
   formatValue,
-  DISPLAY_NAMES 
-} from '../ColumnMappingEditor/columnMappingService';
+  DISPLAY_NAMES
+} from '@/utils/columnConfig';
 
 // Importera BARA för att kunna generera korrekta exportfilnamn, men använd inte för visningsnamn
 import { ACCOUNT_VIEW_FIELDS } from '@/utils/dataProcessing';
@@ -272,24 +272,11 @@ const AccountView = ({ data, selectedFields }) => {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [columnMappings, setColumnMappings] = useState({});
+  const [columnMappings] = useState(COLUMN_MAPPINGS);
   const [summaryData, setSummaryData] = useState([]);
   const [totalSummary, setTotalSummary] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [copyStatus, setCopyStatus] = useState({ field: null, rowId: null, copied: false });
-
-  // Ladda kolumnmappningar när komponenten monteras
-  useEffect(() => {
-    const loadMappings = async () => {
-      try {
-        const mappings = await readColumnMappings();
-        setColumnMappings(mappings);
-      } catch (error) {
-        console.error('Failed to load column mappings:', error);
-      }
-    };
-    loadMappings();
-  }, []);
 
   // Beräkna summerade data när data, valda fält eller mappningar ändras
   useEffect(() => {
