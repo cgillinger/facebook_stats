@@ -12,10 +12,12 @@ export const MEMORY_THRESHOLDS = {
 };
 
 // Standardvärden för lagringsstorlekar - uppskattningar baserade på typiska webbläsare
+// Moderna webbläsare stöder vanligtvis flera GB IndexedDB-lagring:
+// Chrome: upp till 80% av diskutrymmet, Firefox: upp till 50%, Safari: minst 1GB
 const STORAGE_LIMITS = {
   LOCALSTORAGE: 5 * 1024 * 1024, // 5MB typisk localStorage-gräns
-  INDEXEDDB: 200 * 1024 * 1024,  // 200MB konservativ uppskattning för IndexedDB
-  UNIFIED: 205 * 1024 * 1024     // 205MB total kapacitet (5MB för localStorage + 200MB för IndexedDB)
+  INDEXEDDB: 2 * 1024 * 1024 * 1024,  // 2GB realistisk uppskattning för IndexedDB
+  UNIFIED: 2 * 1024 * 1024 * 1024 + 5 * 1024 * 1024  // ~2GB total kapacitet
 };
 
 /**
