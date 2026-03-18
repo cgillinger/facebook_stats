@@ -438,7 +438,7 @@ const saveProcessedData = async (accountViewData, postViewData, fileInfo = null)
     
     // Spara post view data
     const postViewString = JSON.stringify(postViewData);
-    if (postViewString.length < 1500000) { // ~1.5MB gräns, sänkt från 5MB
+    if (postViewString.length < 4 * 1024 * 1024) { // ~4MB gräns (under localStorage 5MB-gränsen)
       saveConfig(STORAGE_KEYS.POST_VIEW_DATA, postViewData);
     } else {
       // För större datamängder, använd IndexedDB
